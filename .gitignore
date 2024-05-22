@@ -4,7 +4,7 @@
 .Ruserdata
 
 # 'data' folder #
-data/
+Data/
 
 # Common text files that may contain data #
 *.[cC][sS][vV]
@@ -19,3 +19,4 @@ data/
 # R data files #
 *.[rR][dD][aA][tT][aA]
 *.[rR][dD][sS]
+*.[parquet]
