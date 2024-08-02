@@ -14,8 +14,11 @@ purchase2022 <- read_fwf("2022 Purchase Data/purchase record files/RT42D056_2023
                                 "null6", "promcode", "purchnum", "null7", "validfield", "null8", "area", "market", 
                                 "mktsector", "submkt", "extended", "null9", "purchdate" )))
 
+#Remove unnamed variables 
+rm(null1,null2, null3, null4, null5, null6, null7, null8, null9)
+
 # read in a csv (2022 panel data)
-panel_202301 <- read_csv("Panel data/panel_household_master_202301.csv")
+panel_202301 <- read_csv("Panel data/panel_household_master_202301_v2.csv")
 
 
 # joining the 2022 panel data and the 2022 purchase data
@@ -45,8 +48,11 @@ purchase2023 <- read_fwf("2023 Purchase Data/purchase record files/RT42D056_2024
                                       "null6", "promcode", "purchnum", "null7", "validfield", "null8", "area", "market", 
                                       "mktsector", "submkt", "extended", "null9", "purchdate" )))
 
+#Remove unnamed variables 
+rm(null1,null2, null3, null4, null5, null6, null7, null8, null9)
+
 # read in a csv (2023 panel data)
-panel_202401 <- read_csv("Panel data/panel_household_master_202401.csv")
+panel_202401 <- read_csv("Panel data/panel_household_master_202401_v2.csv")
 
 
 # joining the 2023 panel data and the 2023 purchase data
