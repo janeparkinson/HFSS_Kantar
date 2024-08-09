@@ -62,6 +62,22 @@ PP_NPM_MKTS22 <- PP_NPM22 %>%
   left_join(product_submarket, by=c("submkt" = "submarket_code"))%>%
   left_join(product_extended, by=c("extended" = "extended_code"))
 
+####################################
+#Add store, product and producer info
+####################################
+###START HERE ON FRIDAY 09/08/24
+#Read in stores file and master file
+PP_NPM_MKTS22- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/PP_NPM_MKTS22.parquet")
+stores05 <-read.csv("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/2022 Purchase Data/stores05.csv")
+
+#Reclassify storecode in stores05 file as character
+stores05$Store.code <- as.character(stores05$Store.Code)
+
+#Join store codes to master file
+PP_NPM_MKTS22_STORE22 <- PP_NPM_MKTS22 %>%
+  left_join(store05, by=c("Shopcode" = "Store Code"))
+
+
 #Add product codes abd uom
 # Product data - open data
 rst_products <- fread("2022 Purchase Data/rst_products.csv")
@@ -72,13 +88,14 @@ rst_uom$VF <- as.character(rst_uom$VF)
 rst_products$VF <- as.character(rst_products$VF)
  
 
-***START HERE ON FRIDAY 09/08/24
+
 HFSSPRODUCTS22 <- PP_NPM_MKTS22 %>%
   right_join(rst_products, by=c("validfield" = "VF")) %>%
   right_join(rst_uom, by=c("validfield" = "VF"))
 
 #Save 2022 file
 write_parquet(PP_NPM_MKTS22, "PP_NPM_MKTS22.parquet")
+
 
 
 
