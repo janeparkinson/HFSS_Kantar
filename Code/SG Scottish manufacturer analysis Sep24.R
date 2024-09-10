@@ -40,6 +40,8 @@ write_parquet(SG_dataset, "SG_dataset.parquet")
 #SYNTAX TO CREATE TABLE METRICS#
 ################################
 
+#START HERE 11/09/24
+
 #Open SG data file
 SG_dataset <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/SG_dataset.parquet")
 
