@@ -20,41 +20,24 @@ setwd("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/")
 ###########################################
 
 #Read in time, purchase/panel data and NPM2024P2 csv files
-#The time file is necessary to add the NPM period which is used to add the HFSS and NPM categories from the NPM_2024P2 file
 time2022 <- fread("2022 Purchase Data/time2022.csv")
 joined_data_2022 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/joined_data2022.parquet")
-NPM_2024P2 <- fread("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/NPM_2024P2.csv")
+all_periods_NPM <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/all_periods_NPM.parquet")
 
-# joining the time csv and the panel/purchase data using purchase date
-# This stage adds the period for NPM variable to the panel/purchase data - necessary to join the HFSS data file at the next stage
-# 'Date' from time2022 variable is the primary key
-
-# First rename 'Period for NPM' as R thinks the 'for' part of the name is a function
-rename(time2022, Period_for_NPM = `Period for NPM`)
-    
-# LINKAGE 
-# Merge purchasepanel data with time period file
+# joining the time csv and the panel/purchase data using purchase date (The time file is necessary to add the NPM period which is used to add the HFSS and NPM categories from the NPM_2024P2 file)
+# This stage adds the period for NPM variable to the panel/purchase data - necessary to join the HFSS data file (joined_data_2022)
+time2022 <- rename(time2022, `period` = `Period for NPM`)
 Time_purchpanel22 <- joined_data_2022 %>%
   merge(y=time2022, by.y="Date", by.x="purchdate" )
 
 
-# need to join datasets on product code and date of purchase variables in order to assign correct NPM code to period product was purchased (reformulation?)
 #Recode prodcode in panpurchase dataset as double.
 Time_purchpanel22$prodcode <- as.numeric(Time_purchpanel22$prodcode)
-
-
-#Write intermediate file
-write_parquet(Time_purchpanel22, "Time_purchpanel22.parquet")
-
-#START HERE ON 10/9/24 
-Time_purchpanel22 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/Time_purchpanel22.parquet")
-
 
 #Join panel and purchase data with NPM and HFSS data (NPM_2024P2)
 #Left join retaining all of the Time_purchpanel22 file as this has all the purchases for 2022
 #NPM_2024P2 file has all NPM data for more products than there are purchases i.e. extra products that aren't matched onto panel file will drop off
-PP_NPM22 <- dplyr::left_join(Time_purchpanel22, NPM_2024P2, by=c("prodcode" = "PRODUCT", "Period for NPM" = "period"))
-
+PP_NPM22 <- dplyr::left_join(Time_purchpanel22, all_periods_NPM, by=c("period", "prodcode" = "PRODUCT"))
 
 #Add columns with names of products, markets, submarkets and extended (from Catrona's code 'Linking NPM scores.R'- adapted on 07/08/24)
 # Product text data (has product descriptor but NOT producer details which is in rfnnnn files
@@ -156,14 +139,14 @@ setwd("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/")
 #The time file is necessary to add the NPM period which is used to add the HFSS and NPM categories from the NPM_2024P2 file
 time2023 <- fread("2023 Purchase Data/time2023.csv")
 joined_data_2023 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/joined_data2023.parquet")
-NPM_2024P2 <- fread("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/NPM_2024P2.csv")
+all_periods_NPM <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/all_periods_NPM.parquet")
 
 # joining the time csv and the panel/purchase data using purchase date
 # This stage adds the period for NPM variable to the panel/purchase data - necessary to join the HFSS data file at the next stage
 # 'Date' from time2023 variable is the primary key
 
 # First rename 'Period for NPM' as R thinks the 'for' part of the name is a function
-rename(time2023, Period_for_NPM = `Period for NPM`)
+time2023 <- rename(time2023, `period` = `Period for NPM`)
 
 # LINKAGE 
 # Merge purchasepanel data with time period file
@@ -176,20 +159,13 @@ Time_purchpanel23 <- joined_data_2023 %>%
 Time_purchpanel23$prodcode <- as.numeric(Time_purchpanel23$prodcode)
 
 
-#Write intermediate file
-write_parquet(Time_purchpanel23, "Time_purchpanel23.parquet")
-
-#START HERE FOR HFSS CODE 10/9/24
-#Time_purchpanel23 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/Time_purchpanel23.parquet")
-
-
 #Join panel and purchase data with NPM and HFSS data (NPM_2024P2)
 #Left join retaining all of the Time_purchpanel23 file as this has all the purchases for 2023
 #NPM_2024P2 file has all NPM data for more products than there are purchases i.e. extra products that aren't matched onto panel file will drop off
-PP_NPM23 <- dplyr::left_join(Time_purchpanel23, NPM_2024P2, by=c("prodcode" = "PRODUCT", "Period for NPM" = "period"))
+PP_NPM23 <- dplyr::left_join(Time_purchpanel23, all_periods_NPM, by=c("period", "prodcode" = "PRODUCT" ))
 
 
-#Add columns with names of products, markets, submarkets and extended (from Catrona's code 'Linking NPM scores.R'- adapted on 07/08/24)
+#Add columns with names of products, markets, submarkets and extended (from Catriona's code 'Linking NPM scores.R'- adapted on 07/08/24)
 # Product text data (has product descriptor but NOT producer details which is in rfnnnn files
 #read in market files
 product_area <- read_delim("2023 Purchase Data/product attributes/area.txt", col_names = c("area_code", "Area")) 
@@ -242,7 +218,6 @@ rst_uom23$SVF <- as.numeric(rst_uom23$VF)
 
 #VF codes are repeated for some categories across different RF groupings but the uom information is the same, regardless
 #I have collapsed the data retaining the first occurrence of the VF data. This is to allow for a one to many merge
-
 rst_uom23_first <- rst_uom23[match(unique(rst_uom23$VF), rst_uom23$VF),]
 
 
@@ -257,7 +232,7 @@ HFSSFINAL23 <- HFSSFINAL23 %>%
 ######################################
 
 #null1-9, Week Number, Day Number, ...1
-HFSSFINAL23 <- subset(HFSSFINAL23, select = -c(null1, null2,null3, null4, null5, null6, null7, null8, null9, V1, `Day Number`, `Week Number`,  V6, V7, VF_TITLE.y, SVF))
+HFSSFINAL23 <- subset(HFSSFINAL23, select = -c(null1, null2,null3, null4, null5, null6, null7, null8, null9, `Day Number`, `Week Number`,  V6, V7, VF_TITLE.y, SVF))
 
 #Reorder variables
 HFSSFINAL23 <- HFSSFINAL23[  ,c(1:27,28,36,29,37,30,38,31,39,32,40,33,34,35,41:54)]
@@ -285,3 +260,5 @@ colnames(HFSSFINAL22_23) [colnames(HFSSFINAL22_23) %in% c("Area", "Market","Sect
   
 #Write joined datafile
   write_parquet(HFSSFINAL22_23, "HFSSFINAL22_23.parquet")
+  
+
