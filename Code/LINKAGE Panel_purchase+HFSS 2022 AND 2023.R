@@ -24,6 +24,7 @@ time2022 <- fread("2022 Purchase Data/time2022.csv")
 joined_data_2022 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/joined_data2022.parquet")
 all_periods_NPM <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/all_periods_NPM.parquet")
 
+
 # joining the time csv and the panel/purchase data using purchase date (The time file is necessary to add the NPM period which is used to add the HFSS and NPM categories from the NPM_2024P2 file)
 # This stage adds the period for NPM variable to the panel/purchase data - necessary to join the HFSS data file (joined_data_2022)
 time2022 <- rename(time2022, `period` = `Period for NPM`)
@@ -99,7 +100,7 @@ rst_uom22_first <- rst_uom22[match(unique(rst_uom22$VF), rst_uom22$VF),]
 
 #join uom data to 2022
 HFSSFINAL22 <- HFSSFINAL22 %>%
-  left_join(rst_uom22_first, by=c("VF"))
+  left_join(rst_uom22_first)
 
   
 ######################################
@@ -112,9 +113,11 @@ HFSSFINAL22 <- subset(HFSSFINAL22, select = -c(null1, null2,null3, null4, null5,
 #Reorder variables
 HFSSFINAL22 <- HFSSFINAL22[  ,c(1:27,28,36,29,37,30,38,31,39,32,40,33,34,35,41:54)]
 
+HFSSFINAL22 <- HFSSFINAL22[  ,c(1,26,2:25,27,55,52,53,54,28,36,29,37,30,38,31,39,32,40,33,34,35,41:51)]
+
 
 #Write HFSS22 file for merging with HFSS23 from code below.
-#2,528,239 obs of 54 variables
+#2,528,239 obs of 55 variables
 write_parquet(HFSSFINAL22, "HFSSFINAL22.parquet")
 
   
@@ -214,7 +217,7 @@ HFSSFINAL23 <- PP_NPM_MKTS_STORE23 %>%
 
 #open uom file for 2023
 rst_uom23 <- fread("2023 Purchase Data/rst_uom.csv")
-rst_uom23$SVF <- as.numeric(rst_uom23$VF)
+rst_uom23$VF <- as.numeric(rst_uom23$VF)
 
 #VF codes are repeated for some categories across different RF groupings but the uom information is the same, regardless
 #I have collapsed the data retaining the first occurrence of the VF data. This is to allow for a one to many merge
@@ -223,7 +226,7 @@ rst_uom23_first <- rst_uom23[match(unique(rst_uom23$VF), rst_uom23$VF),]
 
 #join uom data to 2023
 HFSSFINAL23 <- HFSSFINAL23 %>%
-  left_join(rst_uom23_first, by=c("VF"))
+  left_join(rst_uom23_first)
 
 
 
@@ -235,11 +238,11 @@ HFSSFINAL23 <- HFSSFINAL23 %>%
 HFSSFINAL23 <- subset(HFSSFINAL23, select = -c(null1, null2,null3, null4, null5, null6, null7, null8, null9, `Day Number`, `Week Number`,  V6, V7, VF_TITLE.y, SVF))
 
 #Reorder variables
-HFSSFINAL23 <- HFSSFINAL23[  ,c(1:27,28,36,29,37,30,38,31,39,32,40,33,34,35,41:54)]
+HFSSFINAL23 <- HFSSFINAL23[  ,c(1,26,2:25,27,55,52,53,54,28,36,29,37,30,38,31,39,32,40,33,34,35,41:51)]
 
 
 #Write HFSS23 file for merging with HFSS23 from code below.
-#2,421,692 obs of 54 variables
+#2,421,692 obs of 55 variables
 write_parquet(HFSSFINAL23, "HFSSFINAL23.parquet")
 
 
