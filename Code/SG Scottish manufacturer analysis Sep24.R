@@ -68,6 +68,10 @@ SG_dataset <- SG_dataset %>% drop_na(hfss_category)#Drop non-HFSS category produ
 SG_dataset <- SG_dataset[SG_dataset$HFSS.x != 0, ]#Drop products with an HFSS score of 0 within the regulation categories (left with 474,844 HFSS purchases falling into the reg categories for 2023)
 
 
+
+
+
+
 #Write data file for SG analysis
 write_parquet(SG_dataset, "SG_dataset.parquet")
 
@@ -82,6 +86,11 @@ write_parquet(SG_dataset, "SG_dataset.parquet")
 SGTableA <- SG_dataset%>%        
   group_by(Manufacturer) %>% 
   summarise(Spend= sum(amtspent))
+
+#Link SG file with manufacturer addresses to HFSS/reg product file
+Manufacturer_addresses <- fread("Manufacturers_registered_UK_office_address.csv")
+SGTableA <- dplyr::left_join(SGTableA,Manufacturer_addresses, by=c("Manufacturer"))
+
 
 SGTableA = SGTableA %>% 
   mutate(percent = (Spend/sum(Spend)*100))#Calculate percentage of total spend by manufacturer SGTableA %>%
