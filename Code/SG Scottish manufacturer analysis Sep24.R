@@ -59,6 +59,10 @@ colnames(SG_dataset) [colnames(SG_dataset) %in% c("Area", "Market","Sector","Sub
 
 SG_dataset <- SG_dataset %>% mutate_at(c('amtspent'), as.numeric)#Change amtspent to numeric
 
+#Calculate grossed-up spend as per Kantar readme file
+#Multiple spend/volume/packs by gross up factor for reported data levels i.e. full panel
+
+
 
 #QA CHECK
 #2,421,692 observations of 59 variables
@@ -67,9 +71,11 @@ SG_dataset <- SG_dataset %>% mutate_at(c('amtspent'), as.numeric)#Change amtspen
 SG_dataset <- SG_dataset %>% drop_na(hfss_category)#Drop non-HFSS category products (left with 765,267 purchases for 2023)
 SG_dataset <- SG_dataset[SG_dataset$HFSS.x != 0, ]#Drop products with an HFSS score of 0 within the regulation categories (left with 474,844 HFSS purchases falling into the reg categories for 2023)
 
+#Create panel_spend variable (amtspent multiplied by grossup factor)
+SG_dataset <- SG_dataset %>% mutate_at(c('grossupfact'), as.numeric)#Change grossupfact to numeric
 
-
-
+SG_dataset <- SG_dataset%>%
+  mutate(amtspent_panel = amtspent * grossupfact)
 
 
 #Write data file for SG analysis
@@ -83,29 +89,31 @@ write_parquet(SG_dataset, "SG_dataset.parquet")
 #SUMMARY STATISTICS
 
 
-SGTableA <- SG_dataset%>%        
+SGTableA_revised <- SG_dataset%>%        
   group_by(Manufacturer) %>% 
-  summarise(Spend= sum(amtspent))
+  summarise(Spend= sum(amtspent_panel))
 
 #Link SG file with manufacturer addresses to HFSS/reg product file
 Manufacturer_addresses <- fread("Manufacturers_registered_UK_office_address.csv")
-SGTableA <- dplyr::left_join(SGTableA,Manufacturer_addresses, by=c("Manufacturer"))
+SGTableA_revised <- dplyr::left_join(SGTableA_revised,Manufacturer_addresses, by=c("Manufacturer"))
 
 
-SGTableA = SGTableA %>% 
-  mutate(percent = (Spend/sum(Spend)*100))#Calculate percentage of total spend by manufacturer SGTableA %>%
-SGTableA[,'percent']=round(SGTableA[,'percent'],2)
+SGTableA_revised = SGTableA_revised %>% 
+  mutate(percent = (Spend/sum(Spend)*100))#Calculate percentage of total spend by manufacturer SGTableA_revised %>%
+SGTableA_revised[,'percent']=round(SGTableA_revised[,'percent'],2)
 
-SGTableA <- SGTableA %>% #Calculate cumulative percentage of total spend by manufacturer
+SGTableA_revised <- SGTableA_revised %>% #Calculate cumulative percentage of total spend by manufacturer
   arrange(-Spend) %>% 
   mutate(cumperc=cumsum(percent))
-SGTableA[,'cumperc']=round(SGTableA[,'cumperc'],2)
+SGTableA_revised[,'cumperc']=round(SGTableA_revised[,'cumperc'],2)
 
-summary(SGTableA)
+summary(SGTableA_revised)
 
 
-#Write CSV file for charts in Excel
-write_csv(SGTableA, "SGTableA.csv")
+#Write xlsx file for charts in Excel
+install.packages("openxlsx")
+library(openxlsx)
+write.xlsx(SGTableA_revised, "SGTableA_revised.xlsx")
 
 
 
