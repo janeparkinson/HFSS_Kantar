@@ -5,18 +5,18 @@ library(arrow) # for efficient file saving and reading
 library(dplyr)
 library(readxl)
 library(data.table) # For 'fread' function to read in CSVs efficiently
-setwd("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/")
+setwd("//PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/")
 
 ## Read in data
 
 # Read in rf files
 # Use select(any_of()) to include 'Low sugar/calorie/fat' column if the dataframe has it (to check for added sugar drinks), but not if it doesn't
-
+# 
 # files <- list.files(path = "2023 Purchase Data/product master", full.names = TRUE)
 # 
 # dataframes <- lapply(files, function(f){
 #   fread(f, skip = 1, header = TRUE) %>%
-#     select(any_of(c("Product", "Product Desc", "Manufacturer", "Brand", "RST 4 Market", "RST 4 Sub Market", "RST 4 Extended", "Low Sugar/Calorie/Fat")))
+#     select(any_of(c("Product", "Product Desc", "Manufacturer", "Brand", "RST 4 Trading Area", "RST 4 Market", "RST 4 Sub Market", "RST 4 Extended", "Low Sugar/Calorie/Fat")))
 # }
 #                      )
 # 
@@ -94,62 +94,77 @@ npm_markets_hfss <- npm_markets %>%
         by = "concat",
         all.y = TRUE)
 
-# Check if any combinations of markets/submarkets/extended are missing
-npm_markets_hfss %>%
-  filter(is.na(PRODUCT)) %>%
-  View()
-
-# Investigate missing ones:
-# Frozen Ready Meals Italian Frozen Ready Me Italian Kievs
-npm_markets %>%
-  filter(market == "Frozen Ready Meals",
-         sub_market == "Italian") %>%
-  group_by(extended) %>%
-  tally()
-
-# Check rf and NPM files separately
-
-rf_combined %>%
-  rename(market = "RST 4 Market",
-         sub_market = "RST 4 Sub Market",
-         extended = "RST 4 Extended") %>%
-  filter(market == "Frozen Ready Meals" &
-           sub_market == "Italian"
-         #,
-         #extended == "Frozen Ready Breaded-Kievs/E"
-         ) %>%
-  group_by(extended) %>%
-  tally()
-
-# Not in rf files
-
-# Process drinks:
-# Remove non-alcoholic beer, since SG has confirmed that most of these are exempt
-# Also remove any drinks that don't have added sugar
-
-# First, investigate added sugar categories for drinks
-npm_markets_hfss %>%
-  filter(hfss_category == "Prepared Soft Drinks") %>%
-  group_by(low_sugar) %>%
-  tally()
-
-npm_markets_hfss %>%
-  filter(hfss_category == "Prepared Soft Drinks") %>%
-  arrange(Manufacturer, Brand) %>%
-  View()
-
-# Keep only 'Regular' and 'Standard'
-# Also filter out non-alcoholic beer
-npm_markets_hfss_filtered <- npm_markets_hfss %>%
-  filter(hfss_category != "Prepared Soft Drinks" | low_sugar %in% c("Regular", "Standard"),
-         market != "Non Alcoholic Beer")
-
-# Match on full names of products from rst_products file
-npm_hfss_prod_names <- npm_markets_hfss_filtered %>%
+# Match on full names of products and VF_TITLE from rst_products file
+# Use unfiltered product files
+npm_hfss_prod_names <- npm_markets_hfss %>%
   merge(rst_products_2023%>%
-          select(PRODUCT, PRODUCT_LONG_DESC),
+          select(PRODUCT, VF_TITLE, PRODUCT_LONG_DESC),
         by = "PRODUCT",
         all.x = TRUE)
+
+# Write to file
+#write_parquet(npm_hfss_prod_names, "npm_hfss_prod_names.parquet")
+
+# Read in npm_hfss_prod_names file
+npm_hfss_prod_names <- read_parquet("npm_hfss_prod_names.parquet")
+
+# Create column without pack size
+npm_hfss_prod_names <- npm_hfss_prod_names %>%
+  mutate(prod_desc_no_size = str_replace(PRODUCT_LONG_DESC, '(\\s*\\([\\w\\s\\.]+\\))+$', ""))
+
+# What about if we only look at products bought in the last year?
+# Read in HFSSFINAL23 data file created by Elaine (//PHI_conf/PHSci-HFSS/Kantar analysis/Elaine/HFSS Kantar/Code/LINKAGE Panel_purchase+HFSS 2022 AND 2023.R script)
+purchases_2023 <- read_parquet("HFSSFINAL23.parquet")
+
+# Only include products that were bought in last year, and get distinct products
+hfss_bought_last_year <- purchases_2023 %>%
+  select(prodcode, Area, shop_level_2 = "Level 2", shop_level_3 = "Level 3") %>% # Only keep prodcode (for matching) and area_desc and shop (which aren't in the hfss product df) from the purcahses_2023 file
+  merge(npm_hfss_prod_names, 
+        #%>%
+         # select(Manufacturer, Brand, hfss_category, PRODUCT, NPM, HFSS, hfss_period = period, prod_desc_no_size, market, sub_market, extended, VF_TITLE, `Product Desc`, PRODUCT_LONG_DESC, prod_desc_no_size, low_sugar),
+        by.x = "prodcode",
+        by.y = "PRODUCT") %>%
+  # Get distinct products
+  distinct(hfss_category, NPM, HFSS, period, Manufacturer, Brand, Area, shop_level_2, shop_level_3, market, sub_market, extended, VF_TITLE, prodcode, `Product Desc`, PRODUCT_LONG_DESC, prod_desc_no_size)
+
+# Are there any duplicates that have different HFSS scores for products bought in 2023?
+hfss_bought_last_year %>%
+  filter(prod_desc_no_size == lag(prod_desc_no_size) &
+           HFSS != lag(HFSS) |
+           prod_desc_no_size == lead(prod_desc_no_size) &
+           HFSS != lead(HFSS) ) %>%
+  arrange(prod_desc_no_size) %>%
+  View()
+
+# A couple of soft drinks
+
+# Only include one pack size
+bought_last_year_one_pack_size <- hfss_bought_last_year %>%
+  distinct(Manufacturer, Brand, Area, market, sub_market, extended, PRODUCT_LONG_DESC, prod_desc_no_size, .keep_all = TRUE)
+
+# Look at products in HFSS categories, that were bought in 2023
+table(bought_last_year_one_pack_size$hfss_category, bought_last_year_one_pack_size$HFSS)
+
+# Only get count of category, and round to nearest 100
+bought_last_year_one_pack_size %>%
+  group_by(hfss_category) %>%
+  summarise(count = round(n(), -2)) %>%
+  ungroup() %>%
+  View()
+
+# Get percentage HFSS
+tab <- table(bought_last_year_one_pack_size$hfss_category, bought_last_year_one_pack_size$HFSS)
+round(100 * tab / rowSums(tab), 0) %>% View()
+
+# Get dataframe FOR 2023 PRODUCTS with only duplicates once pack size has been removed
+only_dups_2023 <- hfss_bought_last_year %>%
+  arrange(prod_desc_no_size) %>%
+  group_by(prod_desc_no_size) %>%
+  filter(n() > 1,
+         prod_desc_no_size != "") %>%
+  ungroup()
+
+## Further investigations
 
 # How many HFSS vs not HFSS?
 table(npm_hfss_prod_names$HFSS)
@@ -161,9 +176,7 @@ npm_hfss_prod_names %>%
   View()
 # 89,044 don't have long descriptions, around 37%
 
-## Investigate wet/smoked fish
+# Investigate particular brands
 
-npm_markets %>%
-  filter(market == "Wet/Smoked Fish") %>%
-  group_by(sub_market) %>%
-  tally()
+bought_last_year_one_pack_size %>%
+  filter()
