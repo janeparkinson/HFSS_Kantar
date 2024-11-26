@@ -125,22 +125,50 @@ hfss_bought_last_year <- purchases_2023 %>%
         by.x = "prodcode",
         by.y = "PRODUCT") %>%
   # Get distinct products
-  distinct(hfss_category, NPM, HFSS, period, Manufacturer, Brand, Area, shop_level_2, shop_level_3, market, sub_market, extended, VF_TITLE, prodcode, `Product Desc`, PRODUCT_LONG_DESC, prod_desc_no_size)
+  distinct(.)
+  #distinct(hfss_category, NPM, HFSS, period, Manufacturer, Brand, Area, market, sub_market, extended, VF_TITLE, prodcode, `Product Desc`, PRODUCT_LONG_DESC, prod_desc_no_size, .keep_all = TRUE)
 
 # Are there any duplicates that have different HFSS scores for products bought in 2023?
-hfss_bought_last_year %>%
+hfss_bought_last_year_diff_hfss <- hfss_bought_last_year %>%
+  arrange(prod_desc_no_size) %>%
+  filter(!is.na(prod_desc_no_size)) %>%
   filter(prod_desc_no_size == lag(prod_desc_no_size) &
            HFSS != lag(HFSS) |
            prod_desc_no_size == lead(prod_desc_no_size) &
-           HFSS != lead(HFSS) ) %>%
-  arrange(prod_desc_no_size) %>%
-  View()
+           HFSS != lead(HFSS) )
 
-# A couple of soft drinks
+# Yes, quite a lot. Save as a CSV file. This has decisions noted on it.
+write_csv(hfss_bought_last_year_diff_hfss, "hfss_bought_last_year_diff_hfss.csv")
+
+# The NPM is calculated per 100g, so to convert products sold by volume, you need to multiply the amount per 100g by the specific gravity (see example on page 15 here: https://assets.publishing.service.gov.uk/media/5a7cdac7e5274a2c9a484867/dh_123492.pdf)
+# Have used this table of specific gravity of different drinks from Food Standards Australia and New Zealand: https://www.foodstandards.gov.au/business/labelling/nutrition-panel-calculator/specific-gravities
+
+## Boost energy original. Nutritional info from: https://boostdrinks.com/boost-drinks/boost-energy/original/
+# Specific gravity of energy drinks is 1.07
+# Using this conversion, drink gets 1 point for sugar, so is considered HFSS
+# Exclude prodcode 180759, which is marked as not HFSS (perhaps different specific gravities were used, or recipe changed)
+
+## Lucozade energy original. Nutritional information from: https://www.tesco.com/groceries/en-GB/products/308476178?srsltid=AfmBOoratZIkdQW9HNeHtEPZkAYR750oZVet7a1mXqJ0HHm-T1zdwlc7
+# Specific gravity of energy drinks is 1.07
+# Using this conversion, drink gets 1 point for sugar, so is considered HFSS
+# Exclude prodcode 319387, which is marked as not HFSS (perhaps different specific gravities were used, or recipe changed)
+
+## Ribena blackcurrant. Nutritional information from: 
+
+# Specific gravity for 'Fruit drinks, various, recommended dilution' is 1.04
+# Using this conversion, drink gets 0 on NPM score, so is NOT considered HFSS
+# Exclude prodcode 81413, which IS marked as HFSS
+
+
+
+# Exclude duplicate products, as detailed above
+hfss_bought_last_year_filtered <- hfss_bought_last_year %>%
+  filter(!prodcode %in% c(180759, 319387, 81413))
+# More than three products are excluded, because some are bought in multiple stores
 
 # Only include one pack size
-bought_last_year_one_pack_size <- hfss_bought_last_year %>%
-  distinct(Manufacturer, Brand, Area, market, sub_market, extended, PRODUCT_LONG_DESC, prod_desc_no_size, .keep_all = TRUE)
+bought_last_year_one_pack_size <- hfss_bought_last_year_filtered %>%
+  distinct(Manufacturer, Brand, Area, market, sub_market, extended, PRODUCT_LONG_DESC, prod_desc_no_size, shop_level_2, shop_level_3, .keep_all = TRUE)
 
 # Look at products in HFSS categories, that were bought in 2023
 table(bought_last_year_one_pack_size$hfss_category, bought_last_year_one_pack_size$HFSS)
@@ -176,7 +204,60 @@ npm_hfss_prod_names %>%
   View()
 # 89,044 don't have long descriptions, around 37%
 
-# Investigate particular brands
+## Filter out irrelevant shops
 
-bought_last_year_one_pack_size %>%
-  filter()
+# Investigate included shops
+
+table(bought_last_year_one_pack_size$shop_level_2)
+table(bought_last_year_one_pack_size$shop_level_3)
+
+# Relevant shops not specifically included in shop names: Costcutter, day-to-day, Spar, Premier, N&S mini
+
+# Remove irrelevant shops
+
+bought_last_year_relevant_shops <- bought_last_year_one_pack_size %>%
+  filter(!shop_level_3 %in% c("Amazon", "B&M Bargains", "Bakers", "Boots", "Budgens", "Cash & Carry", "Farm Foods", "Home Bargains",
+                              "Iceland", "Market Stalls", "Milkman", "Other Bargain Store", "Other Chemist", "Other Drugstores", "Other Freezer Centres", "Other Multiples",
+                              "Poundland", "Poundstretcher", "Savers", "Superdrug", "Total Butchers", "Wilkinson"))
+
+# Remove shop columns, and remove duplicates bought in different shops
+
+relevant_shops_no_shops <- bought_last_year_relevant_shops %>%
+  select(-shop_level_2, -shop_level_3) %>%
+  distinct(.)
+
+## Select relevant columns and save file as a CSV
+
+cols_for_audit <- relevant_shops_no_shops %>%
+  select(prodcode, area = Area, market, sub_market, extended, manufacturer = Manufacturer, brand = Brand, vf_title = VF_TITLE, reg_cat = hfss_category, HFSS, short_prod_desc = "Product Desc", long_prod_desc = prod_desc_no_size)
+
+# Save as CSV
+write_csv(cols_for_audit, "hfss_for_audit.csv")
+
+## Investigate brands/flavours
+
+relevant_shops_no_shops %>%
+  filter(Brand == "Mccoys Crisps") %>%
+  View()
+
+# McCoy's crisps is a brand on its own and all HFSS
+
+relevant_shops_no_shops %>%
+  filter(str_detect(Brand, "Walkers")) %>%
+  View()
+# Not all Walkers crisps are HFSS
+
+relevant_shops_no_shops %>%
+  filter(Brand == "Walkers Regular Crisps") %>%
+  View()
+# Most Walkers regular crisps are HFSS, except Christmas special ones (I wonder why)
+
+# Ger percentages of HFSS per brand
+tab_brand <- table(relevant_shops_no_shops$Brand, relevant_shops_no_shops$HFSS)
+round(100 * tab_brand / rowSums(tab_brand), 0) %>%
+  as.data.frame() %>%
+  # Only select where HFSS = 1
+  filter(Var2 == 1) %>%
+  arrange(Freq) %>%
+  select(-Var2, Brand = Var1) %>%
+  View()
