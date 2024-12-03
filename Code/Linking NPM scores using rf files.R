@@ -140,95 +140,135 @@ hfss_bought_last_year_diff_hfss <- hfss_bought_last_year %>%
 # Yes, quite a lot. Save as a CSV file. This has decisions noted on it.
 write_csv(hfss_bought_last_year_diff_hfss, "hfss_bought_last_year_diff_hfss.csv")
 
-# The NPM is calculated per 100g, so to convert products sold by volume, you need to multiply the amount per 100g by the specific gravity (see example on page 15 here: https://assets.publishing.service.gov.uk/media/5a7cdac7e5274a2c9a484867/dh_123492.pdf)
-# Have used this table of specific gravity of different drinks from Food Standards Australia and New Zealand: https://www.foodstandards.gov.au/business/labelling/nutrition-panel-calculator/specific-gravities
+# Exclude duplicate products, as detailed in CSV above
+prods_to_exclude <- c(2437,
+                      193159,
+                      109442,
+                      277669,
+                      180759,
+                      276864,
+                      56352,
+                      80006,
+                      186199,
+                      190038,
+                      94232,
+                      196608,
+                      252861,
+                      123284,
+                      507939,
+                      111046,
+                      199652,
+                      203061,
+                      100681,
+                      90588,
+                      120583,
+                      549733,
+                      59330,
+                      155066,
+                      319387,
+                      999346,
+                      382432,
+                      212875,
+                      269930,
+                      295068,
+                      43475,
+                      11638,
+                      457829,
+                      264322,
+                      81413,
+                      702875,
+                      702875,
+                      100230,
+                      727507,
+                      2763,
+                      477879,
+                      135307
+)
 
-## Boost energy original. Nutritional info from: https://boostdrinks.com/boost-drinks/boost-energy/original/
-# Specific gravity of energy drinks is 1.07
-# Using this conversion, drink gets 1 point for sugar, so is considered HFSS
-# Exclude prodcode 180759, which is marked as not HFSS (perhaps different specific gravities were used, or recipe changed)
-
-## Lucozade energy original. Nutritional information from: https://www.tesco.com/groceries/en-GB/products/308476178?srsltid=AfmBOoratZIkdQW9HNeHtEPZkAYR750oZVet7a1mXqJ0HHm-T1zdwlc7
-# Specific gravity of energy drinks is 1.07
-# Using this conversion, drink gets 1 point for sugar, so is considered HFSS
-# Exclude prodcode 319387, which is marked as not HFSS (perhaps different specific gravities were used, or recipe changed)
-
-## Ribena blackcurrant. Nutritional information from: 
-
-# Specific gravity for 'Fruit drinks, various, recommended dilution' is 1.04
-# Using this conversion, drink gets 0 on NPM score, so is NOT considered HFSS
-# Exclude prodcode 81413, which IS marked as HFSS
-
-
-
-# Exclude duplicate products, as detailed above
 hfss_bought_last_year_filtered <- hfss_bought_last_year %>%
-  filter(!prodcode %in% c(180759, 319387, 81413))
-# More than three products are excluded, because some are bought in multiple stores
+  filter(!prodcode %in% prods_to_exclude)
 
-# Only include one pack size
-bought_last_year_one_pack_size <- hfss_bought_last_year_filtered %>%
-  distinct(Manufacturer, Brand, Area, market, sub_market, extended, PRODUCT_LONG_DESC, prod_desc_no_size, shop_level_2, shop_level_3, .keep_all = TRUE)
+## Filter out irrelevant shops
 
-# Look at products in HFSS categories, that were bought in 2023
-table(bought_last_year_one_pack_size$hfss_category, bought_last_year_one_pack_size$HFSS)
+# Investigate included shops
 
-# Only get count of category, and round to nearest 100
-bought_last_year_one_pack_size %>%
-  group_by(hfss_category) %>%
-  summarise(count = round(n(), -2)) %>%
-  ungroup() %>%
-  View()
+table(hfss_bought_last_year_filtered$shop_level_2)
+table(hfss_bought_last_year_filtered$shop_level_3)
 
-# Get percentage HFSS
-tab <- table(bought_last_year_one_pack_size$hfss_category, bought_last_year_one_pack_size$HFSS)
-round(100 * tab / rowSums(tab), 0) %>% View()
+# Relevant shops not specifically included in shop names: Costcutter, day-to-day, Spar, Premier, N&S mini
+
+# Remove irrelevant shops
+
+bought_last_year_relevant_shops <- hfss_bought_last_year_filtered %>%
+  filter(!shop_level_3 %in% c("Amazon", "B&M Bargains", "Bakers", "Boots", "Budgens", "Cash & Carry", "Farm Foods", "Home Bargains",
+                              "Iceland", "Market Stalls", "Milkman", "Other Bargain Store", "Other Chemist", "Other Drugstores", "Other Freezer Centres", "Other Multiples",
+                              "Poundland", "Poundstretcher", "Savers", "Superdrug", "Total Butchers", "Wilkinson"))
+
+# Remove shop columns, and remove duplicates bought in different shops
+# Also remove product_long_desc column to keep one pack size of products (if the HFSS designation and HFSS category is the same)
+relevant_shops_no_shops <- bought_last_year_relevant_shops %>%
+  select(-shop_level_2, -shop_level_3, -PRODUCT_LONG_DESC) %>%
+  distinct(hfss_category, HFSS, prod_desc_no_size, .keep_all = TRUE)
 
 # Get dataframe FOR 2023 PRODUCTS with only duplicates once pack size has been removed
-only_dups_2023 <- hfss_bought_last_year %>%
+only_dups_2023 <- relevant_shops_no_shops %>%
   arrange(prod_desc_no_size) %>%
   group_by(prod_desc_no_size) %>%
   filter(n() > 1,
          prod_desc_no_size != "") %>%
   ungroup()
 
-## Further investigations
+# Some further duplicates here to exclude (not sure why these weren't picked up in previous check)
+# 549841 - Jacob's crinkys. Established in previous CSV that these aren't HFSS
+# 147951- Lucozade. Established in previous CSV that this is HFSS.
 
-# How many HFSS vs not HFSS?
-table(npm_hfss_prod_names$HFSS)
-# 59% HFSS
+prods_to_exclude_2 <- c(549841, 147951)
 
-# How many don't have a long description?
-npm_hfss_prod_names %>%
-  filter(PRODUCT_LONG_DESC == "") %>%
-  View()
-# 89,044 don't have long descriptions, around 37%
+relevant_shops_no_shops_filtered <- relevant_shops_no_shops %>%
+  filter(!prodcode %in% prods_to_exclude_2)
 
-## Filter out irrelevant shops
+# # Look at products in HFSS categories, that were bought in 2023
+# table(bought_last_year_one_pack_size$hfss_category, bought_last_year_one_pack_size$HFSS)
 
-# Investigate included shops
+# Only get count of category, and round to nearest 100
+# bought_last_year_one_pack_size %>%
+#   group_by(hfss_category) %>%
+#   summarise(count = round(n(), -2)) %>%
+#   ungroup() %>%
+#   View()
+# 
+# # Get percentage HFSS
+# tab <- table(bought_last_year_one_pack_size$hfss_category, bought_last_year_one_pack_size$HFSS)
+# round(100 * tab / rowSums(tab), 0) %>% View()
+# 
+# # Get dataframe FOR 2023 PRODUCTS with only duplicates once pack size has been removed
+# only_dups_2023 <- hfss_bought_last_year %>%
+#   arrange(prod_desc_no_size) %>%
+#   group_by(prod_desc_no_size) %>%
+#   filter(n() > 1,
+#          prod_desc_no_size != "") %>%
+#   ungroup()
+# 
+# ## Further investigations
+# 
+# # How many HFSS vs not HFSS?
+# table(npm_hfss_prod_names$HFSS)
+# # 59% HFSS
+# 
+# # How many don't have a long description?
+# npm_hfss_prod_names %>%
+#   filter(PRODUCT_LONG_DESC == "") %>%
+#   View()
+# # 89,044 don't have long descriptions, around 37%
 
-table(bought_last_year_one_pack_size$shop_level_2)
-table(bought_last_year_one_pack_size$shop_level_3)
-
-# Relevant shops not specifically included in shop names: Costcutter, day-to-day, Spar, Premier, N&S mini
-
-# Remove irrelevant shops
-
-bought_last_year_relevant_shops <- bought_last_year_one_pack_size %>%
-  filter(!shop_level_3 %in% c("Amazon", "B&M Bargains", "Bakers", "Boots", "Budgens", "Cash & Carry", "Farm Foods", "Home Bargains",
-                              "Iceland", "Market Stalls", "Milkman", "Other Bargain Store", "Other Chemist", "Other Drugstores", "Other Freezer Centres", "Other Multiples",
-                              "Poundland", "Poundstretcher", "Savers", "Superdrug", "Total Butchers", "Wilkinson"))
-
-# Remove shop columns, and remove duplicates bought in different shops
-
-relevant_shops_no_shops <- bought_last_year_relevant_shops %>%
-  select(-shop_level_2, -shop_level_3) %>%
-  distinct(.)
+# Code Chocolate Confectionery and Sugar Confectionery into Confectionery
+relevant_shops_no_shops_filtered <- relevant_shops_no_shops_filtered %>%
+  mutate(hfss_category = if_else(hfss_category %in% c("Chocolate Confectionery", "Sugar Confectionery"), "Confectionery", hfss_category))
 
 ## Select relevant columns and save file as a CSV
 
-cols_for_audit <- relevant_shops_no_shops %>%
+cols_for_audit <- relevant_shops_no_shops_filtered %>%
+  arrange(prod_desc_no_size) %>%
   select(prodcode, area = Area, market, sub_market, extended, manufacturer = Manufacturer, brand = Brand, vf_title = VF_TITLE, reg_cat = hfss_category, HFSS, short_prod_desc = "Product Desc", long_prod_desc = prod_desc_no_size)
 
 # Save as CSV
