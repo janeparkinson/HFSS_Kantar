@@ -87,6 +87,9 @@ rst_products <- fread("2022 Purchase Data/rst_products.csv")
 HFSSFINAL22 <- PP_NPM_MKTS_STORE22 %>%
   left_join(rst_products, by=c("prodcode" = "PRODUCT"))
 
+#Remove panellists with English postcodes
+HFSSFINAL22 <- subset(HFSSFINAL22, !(starting_postcode %in% c("YO14", "LN11", "TS4", "IP31", "EX2", "GL17") ))
+
 ###################################################
 #ADD UOM data for volume conversion################
 ###################################################
@@ -242,6 +245,8 @@ HFSSFINAL23 <- HFSSFINAL23 %>%
 HFSSFINAL23 <- subset(HFSSFINAL23, select = -c(null1, null2,null3, null4, null5, null6, null7, null8, null9, `Day Number`, `Week Number`, V1, V6, V7))
 HFSSFINAL23 <- HFSSFINAL23[  ,c(1,26,2:25,27,52,53,54,28,36,29,37,30,38,31,39,32,40,33,34,35,41:51)]#Reorder variables
 
+#Drop  panellists who live in England#Outward postcodes (YO14 - North Yorkshire, LN11 - Lincolnshire, TS4 - Teeside, IP31 - Suffolk, EX2- Devon, GL17 - Gloucestershire)
+HFSSFINAL23 <- subset(HFSSFINAL23, !(starting_postcode %in% c("YO14", "LN11", "TS4", "IP31", "EX2", "GL17") ))
 
 #Write HFSS23 file for merging with HFSS23 from code below.
 #2,421,692 obs of 54 variables
@@ -310,8 +315,6 @@ HFSSFINAL22_23 = rbind(HFSSFINAL22, HFSSFINAL23)
  HFSSFINAL23 <- PP_NPM_MKTS_STORE23 %>%
    left_join(rst_products, by=c("prodcode" = "PRODUCT"))
  
- #Drop 6 panellists who live in England#Outward postcodes (YO14 - North Yorkshire, LN11 - Lincolnshire, TS4 - Teeside, IP31 - Suffolk, EX2- Devon, GL17 - Gloucestershire)
- HFSSFINAL22_23 <- subset(HFSSFINAL22_23, !(starting_postcode %in% c("YO14", "LN11", "TS4", "IP31", "EX2", "GL17") ))
 
 #Write joined datafile
   write_parquet(HFSSFINAL22_23, "HFSSFINAL22_23.parquet")
