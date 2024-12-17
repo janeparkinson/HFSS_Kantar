@@ -61,9 +61,8 @@ HFSSFINAL22_23NUT <- HFSSFINAL22_23 %>%
 excessrows <-  HFSSFINAL22_23NUT %>% group_by('purchnum', 'weeknum') %>% filter(n()>1) 
 
 
-
-
 #Write parquet file
+#386 purchases/products have no associated nutritional information in the nutrition files
 write_parquet(HFSSFINAL22_23PCNUT, "HFSSFINAL22_23NUT.parquet")
 
 #Exploration of HFSS/NPM scoring anomaly around croissants
