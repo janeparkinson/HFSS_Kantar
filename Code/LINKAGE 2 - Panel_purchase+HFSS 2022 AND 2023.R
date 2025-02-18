@@ -17,14 +17,49 @@ library(powerjoin)
 library(data.table) # For 'fread' function to read in CSVs efficiently
 setwd("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/")
 
+
+
+#STAGE 1: clean and combine rf files for linkage to master file later on
+#Pivot rf title to a new column so that every rows has an indicator of which rf category it belongs to
+#Catriona's code to add function - RF_title across all 291 rf files
+
+#Part 1: Create function to add column with rf title
+RF_title_func <- function(f) {
+  title <- read_csv(f, n_max = 1, col_select = 6) %>% # Only read in the name of the rf_title
+    names(.) # Turn the column name into a variable
+  
+  read_csv(f, skip = 1) %>%
+    mutate(RF_Title = title,
+           Product = as.numeric(Product)) %>%
+    select(any_of(c("RF_Title", "Product", "Product Desc", "Branded/Private Label", "Holding Company", "Manufacturer", "Range/Trading Company", "Brand", "Packaging", "Pack Type", "Shop Aisle",  "RST 4 Trading Area", "RST 4 Market", "RST 4 Sub Market", "RST 4 Extended")))
+}
+
+
+#Part 2: Listing the rf files and running the RF_title_func
+#See notes on these above
+#R might warn you that there's a parsing error, but I think that's just because of the way we've extracted the title. The code still seems to work ok.
+
+rf_files <- list.files("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/2023 Purchase Data/product master/", full.names = TRUE)
+all_rfs <- lapply(rf_files, RF_title_func)
+
+
+#Part 3: Combining the rf files into one dataframe
+#The all_rfs object is a list of different dataframes. To combine these together, we can use the code below.
+#If the dataframes contain different columns (e.g. Because you've used any_of() above), it will keep all columns and add NA for dataframes without those columns.
+
+combined_rfs <- do.call(bind_rows, all_rfs)
+
+write_parquet(combined_rfs, "combined_rfs.parquet")
+
 ###########################################
-# 2022 HFSS master data file
+# STAGE 2: 2022 HFSS master data file
 ###########################################
 
 #Read in time, purchase/panel data and NPM2024P2 csv files
+combined_rfs <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/combined_rfs.parquet")
 time2022 <- fread("2022 Purchase Data/time2022.csv")
 joined_data_2022 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/joined_data2022.parquet")
-all_periodsproductsNPM <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/all_periods_NPM.parquet") # 'complete' NPM file with imputed NPM anf HR values for products with missing periods
+all_periodsproductsNPM <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/all_periods_NPM.parquet") # 'complete' NPM file with imputed NPM and HR values for products with missing periods
 
 
 # joining the time csv and the panel/purchase data using purchase date (The time file is necessary to add the NPM period which is used to add the HFSS and NPM categories from the NPM_2024P2 file)
@@ -34,6 +69,9 @@ time2022 <- rename(time2022, `period` = `Period for NPM`)
 Time_purchpanel22 <- joined_data_2022 %>%
   merge(y=time2022, by.y="Date", by.x="purchdate" )
 
+# Reorder columns
+Time_purchpanel22 <- Time_purchpanel22 %>%
+  select("Week Number", "Day Number", "period", everything())
 
 #Recode prodcode in panpurchase dataset as double.
 Time_purchpanel22$prodcode <- as.numeric(Time_purchpanel22$prodcode)
@@ -43,7 +81,17 @@ Time_purchpanel22$prodcode <- as.numeric(Time_purchpanel22$prodcode)
 #NPM_2024P2 file has all NPM data for more products than there are purchases i.e. extra products that aren't matched onto panel file will drop off
 PP_NPM22 <- dplyr::left_join(Time_purchpanel22, all_periodsproductsNPM, by=c("period", "prodcode" = "PRODUCT"))
 
-#Add columns with names of products, markets, submarkets and extended (from Catrona's code 'Linking NPM scores.R'- adapted on 07/08/24)
+# Some products are missing from the NPM file
+#53 product numbers are missing from the NPM file - [1] 306584 900035 900034 900036 870428 306284 900516 306900 900334 900517 306413 307106 306316 306574 307411 306385 306818 306665 306755 306841 307064
+#[22] 306662 306739 306895 306408 306741 679973 306745 515408 307048 306294 306327 306242 306231 306224 306315 306406 147718 307122 258544 306429 306612
+#[43] 306358 306261 259374 306906 306268 307143 306803 306260 306342 306276 307857
+
+#unique_values <- subset_na_PP_NPM22 %>%
+#  filter(is.na(NPM)) %>%
+#  pull(prodcode) %>%
+#  unique()
+
+#Add columns with names of products, markets, submarkets and extended (from Catriona's code 'Linking NPM scores.R'- adapted on 07/08/24)
 # Product text data (has product descriptor but NOT producer details which is in rfnnnn files
 #read in market files
 product_area <- read_delim("2022 Purchase Data/product attributes/area.txt", col_names = c("area_code", "Area"))
@@ -80,49 +128,32 @@ PP_NPM_MKTS_STORE22 <- PP_NPM_MKTS22 %>%
 #Add product codes##
 ##################################################
 
-# Product data - open data
-rst_products <- fread("2022 Purchase Data/rst_products.csv")
+#Check if rst_product files  in 2022 and 2023 are the same
+#They are the same
+rst_products_2022 <- read_csv("2022 Purchase Data/rst_products.csv")
+rst_products_2023 <- read_csv("2023 Purchase Data/rst_products.csv")
+
+rst_products_differences <- are_equal <- isTRUE(all.equal(rst_products_2022, rst_products_2023, check.attributes = FALSE)) # both the 2022 and 2023 files are the same
 
 #join product descriptors 
-HFSSFINAL22 <- PP_NPM_MKTS_STORE22 %>%
-  left_join(rst_products, by=c("prodcode" = "PRODUCT"))
+HFSSFINAL22a <- PP_NPM_MKTS_STORE22 %>%
+  left_join(rst_products_2022, by=c("prodcode" = "PRODUCT"))
 
 #Remove panellists with English postcodes
-HFSSFINAL22 <- subset(HFSSFINAL22, !(starting_postcode %in% c("YO14", "LN11", "TS4", "IP31", "EX2", "GL17") ))
+HFSSFINAL22b <- subset(HFSSFINAL22a, !(starting_postcode %in% c("YO14", "LN11", "TS4", "IP31", "EX2", "GL17") ))
 
-###################################################
-#ADD UOM data for volume conversion################
-###################################################
-
-#open uom file for 2022
-rst_uom22 <- fread("2022 Purchase Data/rst_uom.csv")
-HFSSFINAL22$VF <- as.numeric(HFSSFINAL22$VF)
-
-#VF codes are repeated for some categories across different RF groupings but the uom information is the same, regardless
-#I have collapsed the data retaining the first occurrence of the VF data. This is to allow for a one to many merge
-
-rst_uom22_first <- rst_uom22[match(unique(rst_uom22$VF), rst_uom22$VF),]
-
-
-#join uom data to 2022
-HFSSFINAL22 <- HFSSFINAL22 %>%
-  left_join(rst_uom22_first)
-
-  
 ######################################
 #Tidy file and remove extra variables#
 ######################################
 
 #null1-9, Week Number, Day Number, ...1
-HFSSFINAL22 <- subset(HFSSFINAL22, select = -c(null1, null2,null3, null4, null5, null6, null7, null8, null9, `Day Number`, `Week Number`, V6,V7))
+HFSSFINAL22c <- subset(HFSSFINAL22b, select = -c(`...6`, `...7`))
 
-
-HFSSFINAL22 <- HFSSFINAL22[  ,c(1,26,2:25,27,52,53,54,28,36,29,37,30,38,31,39,32,40,33,34,35,41:51)]
 
 
 #Write HFSS22 file for merging with HFSS23 from code below.
-#2,528,239 obs of 54 variables
-write_parquet(HFSSFINAL22, "HFSSFINAL22.parquet")
+#2,526,238 obs of 52 variables
+write_parquet(HFSSFINAL22c, "HFSSFINAL22.parquet")
 
   
 ############################################
@@ -155,13 +186,18 @@ all_periodsproductsNPM <-read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Work
 # This stage adds the period for NPM variable to the panel/purchase data - necessary to join the HFSS data file at the next stage
 # 'Date' from time2023 variable is the primary key
 
-# First rename 'Period for NPM' as R thinks the 'for' part of the name is a function
-time2023 <- rename(time2023, `period` = `Period for NPM`)
-
 # LINKAGE 
 # Merge purchasepanel data with time period file
 Time_purchpanel23 <- joined_data_2023 %>%
   merge(y=time2023, by.y="Date", by.x="purchdate" )  
+
+# Reorder columns
+Time_purchpanel23 <- Time_purchpanel23 %>%
+  select("Week Number", "Day Number", "Period for NPM", everything()) 
+
+#Rename period variable
+Time_purchpanel23 <- Time_purchpanel23 %>%
+  rename( period = `Period for NPM`)
 
 
 # need to join datasets on product code and date of purchase variables in order to assign correct NPM code to period product was purchased (reformulation?)
@@ -214,27 +250,8 @@ PP_NPM_MKTS_STORE23 <- PP_NPM_MKTS23 %>%
 rst_products <- fread("2023 Purchase Data/rst_products.csv")
 
 #join product descriptors 
-HFSSFINAL23 <- PP_NPM_MKTS_STORE23 %>%
+HFSSFINAL23a <- PP_NPM_MKTS_STORE23 %>%
   left_join(rst_products, by=c("prodcode" = "PRODUCT"))
-
-
-###################################################
-#ADD UOM data for volume conversion################
-###################################################
-
-#open uom file for 2023
-rst_uom23 <- fread("2023 Purchase Data/rst_uom.csv")
-rst_uom23$VF <- as.numeric(rst_uom23$VF)
-
-#VF codes are repeated for some categories across different RF groupings but the uom information is the same, regardless
-#I have collapsed the data retaining the first occurrence of the VF data. This is to allow for a one to many merge
-rst_uom23_first <- rst_uom23[match(unique(rst_uom23$VF), rst_uom23$VF),]
-
-
-#join uom data to 2023
-HFSSFINAL23 <- HFSSFINAL23 %>%
-  left_join(rst_uom23_first)
-
 
 
 ######################################
@@ -242,86 +259,166 @@ HFSSFINAL23 <- HFSSFINAL23 %>%
 ######################################
 
 #null1-9, Week Number, Day Number, ...1
-HFSSFINAL23 <- subset(HFSSFINAL23, select = -c(null1, null2,null3, null4, null5, null6, null7, null8, null9, `Day Number`, `Week Number`, V1, V6, V7))
-HFSSFINAL23 <- HFSSFINAL23[  ,c(1,26,2:25,27,52,53,54,28,36,29,37,30,38,31,39,32,40,33,34,35,41:51)]#Reorder variables
+HFSSFINAL23b <- subset(HFSSFINAL23a, select = -c(`V1`, `V6`, `V7`))
+
 
 #Drop  panellists who live in England#Outward postcodes (YO14 - North Yorkshire, LN11 - Lincolnshire, TS4 - Teeside, IP31 - Suffolk, EX2- Devon, GL17 - Gloucestershire)
-HFSSFINAL23 <- subset(HFSSFINAL23, !(starting_postcode %in% c("YO14", "LN11", "TS4", "IP31", "EX2", "GL17") ))
+HFSSFINAL23c <- subset(HFSSFINAL23b, !(starting_postcode %in% c("YO14", "LN11", "TS4", "IP31", "EX2", "GL17") ))
 
 #Write HFSS23 file for merging with HFSS23 from code below.
-#2,421,692 obs of 54 variables
-write_parquet(HFSSFINAL23, "HFSSFINAL23.parquet")
+#2,421,692 obs of 52 variables
+write_parquet(HFSSFINAL23c, "HFSSFINAL23.parquet")
 
 
 #######################################
 #Append HFSSFINAL23 onto HFSS22 final##
 #######################################
-
 #If not already open use code to open HFSSFINAL22 and 23 files
 HFSSFINAL22 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/HFSSFINAL22.parquet")
 HFSSFINAL23 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/HFSSFINAL23.parquet")
+combined_rfs <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/combined_rfs.parquet")
 
 #Append HFSSFINAL22 and HFSSFINAL23
 HFSSFINAL22_23 = rbind(HFSSFINAL22, HFSSFINAL23)
 
 #rename category variable descriptors
- colnames(HFSSFINAL22_23) [colnames(HFSSFINAL22_23) %in% c("Area", "Market","Sector","Submarket","Extended")] <- c("area_desc", "market_desc", "mktsector_desc", "submkt_desc",  "extended_desc")
- colnames(Kantar_regcats) [colnames(Kantar_regcats) %in% c("RST 4 Market", "RST 4 Sub Market", "RST 4 Extended")] <- c("market_desc", "submkt_desc", "extended_desc")
+ #colnames(HFSSFINAL22_23) [colnames(HFSSFINAL22_23) %in% c("Area", "Market","Sector","Submarket","Extended")] <- c("area_desc", "market_desc", "mktsector_desc", "submkt_desc",  "extended_desc")
+ #colnames(Kantar_regcats) [colnames(Kantar_regcats) %in% c("RST 4 Market", "RST 4 Sub Market", "RST 4 Extended")] <- c("market_desc", "submkt_desc", "extended_desc")
 
 
-#LINK HFSS REG CATEGORIES FROM KANTAR WITH MAIN FILE
- #Step 1: Create market_sub_extend variable i.e. collapsed HFSS dataset so every extended category is only listed once
- #This step shows that there are 1,777 distinct extended categories across submarkets and markets
- market_sub_extend <- HFSSFINAL22_23 %>%
-  distinct(market_desc, submkt_desc, extended_desc)
+ ###################################################
+ #ADD UOM data for volume conversion################
+ ###################################################
  
-# Step 2: Join Kantar regs file with extended categories from collapsed purchase file based on 'market and submarket'so that the full extended list is joined with the HFSS categories
-#Split Kantar reg file into rows to be linked on 2 IDs and rows to be linked on 3 IDs
+ #Join uom files to master file using RF and VF as linkage variables -this will make it easier to join this file to the combined master file in the last stage
+ #Check if rst_product files  in 2022 and 2023 are the same
+ #They are the same
+ #rst_uom_2022 <- read_csv("2022 Purchase Data/rst_uom.csv")
+ #rst_uom_2023 <- read_csv("2023 Purchase Data/rst_uom.csv")
  
- #Remove rows with NA for extended category (Kantar_noNA)- three linkage IDs
- Kantar_regcats <- subset(Kantar_regcats, select = -c(Amendment))
- Kantar_noNA <- Kantar_regcats[complete.cases(Kantar_regcats), ]
- colnames(Kantar_noNA) [colnames(Kantar_noNA) %in% c("RST 4 Market", "RST 4 Sub Market", "RST 4 Extended")] <- c("market_desc", "submkt_desc", "extended_desc")
+ #rst_uom_differences <- are_equal <- isTRUE(all.equal(rst_uom_2022, rst_uom_2023, check.attributes = FALSE)) # both the 2022 and 2023 files are the same
  
- #Create Kantar file all NA for extended = two linkage variables
- Kantar_allNA <- Kantar_regcats %>%
-   filter(is.na(extended_desc))
- 
- #Do two step left-joins
- HFSS_COMPLETEA <- Kantar_noNA %>%
-      left_join(market_sub_extend, by = c("market_desc", "submkt_desc", "extended_desc"))
- 
- #Rows that can be joined with two IDs
- HFSS_COMPLETEB <- Kantar_allNA %>%
-   left_join(market_sub_extend, by = c("market_desc", "submkt_desc"))
- HFSS_COMPLETEB <- HFSS_COMPLETEB[, -which(names(HFSS_COMPLETEB) == "extended_desc.x")]
- colnames(HFSS_COMPLETEB) [colnames(HFSS_COMPLETEB) %in% c("extended_desc.y")] <- c("extended_desc")
- 
- 
- #Append HSSCOMPLETEA and HFSSCOMPLETEB
- HFSS_COMPLETE = rbind(HFSS_COMPLETEA, HFSS_COMPLETEB)
 
-#LINK reviseed Kantar regs file to HFSS data file
+
+###################################################
+ #Link uom and rf files to master file
+ ##################################################
+ 
+ #Link combined_rfs to HFSS
+ HFSSFINAL22_23 <- HFSSFINAL22_23 %>%
+   left_join(combined_rfs, by=c("prodcode" = "Product"))
+ 
+ #open uom file for 2023 (same as for 2022)
+ rst_uom23 <- fread("2023 Purchase Data/rst_uom.csv")
+ HFSSFINAL22_23$VF <- as.numeric(HFSSFINAL22_23$VF)
+ rst_uom23$VF <- as.numeric(rst_uom23$VF)
+ 
+ 
+ #Link rst_uom_2023 to the combined_rfs file
+ #Link combined_rfs to HFSS (use rst_uom23 - both years are the same)
+ HFSSFINAL22_23 <- HFSSFINAL22_23 %>%
+   left_join(rst_uom23, by=c("RF_Title" = "RF_TITLE", "VF"))
+ 
+ ####################################################
+ #LINK HFSS REG CATEGORIES FROM KANTAR WITH MAIN FILE
+ ####################################################
+ 
+#Kantar regcats - where all of a submarket is included in the regs then the extended category is not listed
+#Extended is only listed where certain extended categories are included within a submarket
+ 
+ #colnames(Kantar_regcats) [colnames(Kantar_regcats) %in% c("RST 4 Market", "RST 4 Sub Market", "RST 4 Extended")] <- c("market_desc", "submkt_desc", "extended_desc")
+
+ #Some categories need to be linked on 2 IDs and some on 3IDs
+ # Join Kantar regcats to HFSSFINAL22_23 
+ HFSSFINAL22_23 <- HFSSFINAL22_23 %>%
+   left_join(Kantar_regcats %>% filter(!is.na(Kantar_regcats$`RST 4 Extended`)), by = c("RST 4 Market", "RST 4 Sub Market", "RST 4 Extended")) %>% # Join where ID3 is NOT NA in df2
+   left_join(Kantar_regcats %>% filter(is.na(Kantar_regcats$"RST 4 Extended")), by = c("RST 4 Market", "RST 4 Sub Market")) %>%  # Join where ID3 is NA in df2%
+   mutate(HFSS_reg_cat = coalesce(`HFSS Category.x`, `HFSS Category.y`)) 
+ 
+ #Remove columns that aren't needed
+ HFSSFINAL22_23 <- HFSSFINAL22_23 %>% select(- `HFSS Category.y`, -`RST 4 Extended.y`, - Amendment.y)
+ 
+ #Reorder and prune columns
+ # HFSSFINAL22_23 <- HFSSFINAL22_23 %>% select(1,2,19,20,3:16,27,17,18,21:26,28:33,36:40,48, 49,52,34,35,69,64,50,46,47,66:68,41:45,53:65)
+  
+
+#Code an HFSS status column for HFSS categories
+  #1 HFSS_INREGCATS: Products with an NPM score of 4 or 1 + AND with an HFSS regulation category applied
+  #2 HFSS_NOREGS: Products with an NPM score of 4 or 1 + BUT not covered or excluded from any of the 13 regulation categories
+  #3 NOT_HFSS_INREGCATS: Products with an NPM score of less than 4 or 1 (drinks) AND technically covered under one of the 13 regulation categories
+  #4 NOT_HFSS_NOREGS: Products with an NPM score of less than 4 or 1 (drinks) BUT not covered or excluded from the 13 regulation categories
+  
+  #1 HFSS_INREGCATS: Products with an NPM score of 4 or 1 + AND with an HFSS regulation category applied
+  
+  #HFSSFINAL22_23 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/HFSSFINAL22_23.parquet")
+  
+  
   HFSSFINAL22_23 <- HFSSFINAL22_23 %>%
-   left_join(HFSS_COMPLETE, by=c("market_desc", "submkt_desc", "extended_desc"))
+    mutate(HFSS_STATUS = case_when(
+      NPM >= 1 & `RST 4 Trading Area` == 'Take Home Soft Drinks' & !is.na(`HFSS_reg_cat`) ~ 'HFSS_INREGCATS',# cat 1 soft drinks with added sugar in reg category
+      NPM >= 4 & `RST 4 Trading Area` != 'Take Home Soft Drinks' & !is.na(`HFSS_reg_cat`) ~ "HFSS_INREGCATS",# cat 1 foods in reg cats
+      NPM >= 1 & `RST 4 Trading Area` == 'Take Home Soft Drinks' & is.na(`HFSS_reg_cat`)  ~ "HFSS_EXEMPT", # cat 2 HFSS soft drinks with high NPM score but exempt under the regs e.g. fruit juice without added sugar
+      NPM >= 4 & `RST 4 Trading Area` != 'Take Home Soft Drinks' & is.na(`HFSS_reg_cat`)  ~ "HFSS_EXEMPT", # cat 2 HFSS food but exempt under the regs e.g. pies and pastries
+      NPM   <1 & `RST 4 Trading Area` == 'Take Home Soft Drinks' & !is.na(`HFSS_reg_cat`) ~ "NOT_HFSS_INREGCATS", # cat 3 NON HFSS soft drinks with low NPM score and exempt under the regs
+      NPM   <4 & `RST 4 Trading Area` != 'Take Home Soft Drinks' & !is.na(`HFSS_reg_cat`) ~ "NOT_HFSS_INREGCATS", # cat 3 non HFSS foods exempt from regs
+      NPM   <1 & `RST 4 Trading Area` == 'Take Home Soft Drinks' & is.na(`HFSS_reg_cat`)  ~ "NOT_HFSS_NOREGS", # cat 4 non HFSS drinks not in a reg category
+      NPM   <4 & `RST 4 Trading Area` != 'Take Home Soft Drinks' & is.na(`HFSS_reg_cat`)  ~ "NOT_HFSS_NOREGS", #cat 4 non HFSS foods not in a reg cat
+    ))
   
-# Added 29/22/2024
-#Should there be a stage in here where I then remove products which are excluded from each reg category because their HFSS score is 0.
-#Code below not working yet 29/11/24
-  HFSSFINAL22_23PC <- HFSSFINAL22_23PC %>%
-    mutate(`HFSS Category` = na_if(HFSS, 0))
-  
-  
- HFSSFINAL23 <- PP_NPM_MKTS_STORE23 %>%
-   left_join(rst_products, by=c("prodcode" = "PRODUCT"))
- 
 
-#Write joined datafile
+  
   write_parquet(HFSSFINAL22_23, "HFSSFINAL22_23.parquet")
-
   
   
-
   
- 
-
+  
+  
+  
+  
+  
+  #######################
+  # IGNORE
+  ######################
+  
+  #subset_na_HFSSFINAL22_23 <- HFSSFINAL22_23[is.na(HFSSFINAL22_23$NPM), ]
+  
+  
+  #Step 1: Create market_sub_extend variable i.e. collapsed HFSS dataset so every extended category is only listed once
+  #This step shows that there are 1,777 distinct extended categories across submarkets and markets
+  market_sub_extend <- HFSSFINAL22_23 %>%
+    distinct(market_desc, submkt_desc, extended_desc)
+  
+  # Step 2: Join Kantar regs file with extended categories from collapsed purchase file based on 'market and submarket'so that the full extended list is joined with the HFSS categories
+  #Split Kantar reg file into rows to be linked on 2 IDs and rows to be linked on 3 IDs
+  
+  #Remove rows with NA for extended category (Kantar_noNA)- three linkage IDs
+  Kantar_regcats <- subset(Kantar_regcats, select = -c(Amendment))
+  Kantar_noNA <- Kantar_regcats[complete.cases(Kantar_regcats), ]
+  colnames(Kantar_noNA) [colnames(Kantar_noNA) %in% c("RST 4 Market", "RST 4 Sub Market", "RST 4 Extended")] <- c("market_desc", "submkt_desc", "extended_desc")
+  
+  #Create Kantar file all NA for extended = two linkage variables
+  Kantar_allNA <- Kantar_regcats %>%
+    filter(is.na(extended_desc))
+  
+  #Do two step left-joins
+  HFSS_3linkage <- Kantar_noNA %>%
+    left_join(market_sub_extend, by = c("market_desc", "submkt_desc", "extended_desc"))
+  
+  #Rows that can be joined with two IDs
+  HFSS_2linkage <- Kantar_allNA %>%
+    left_join(market_sub_extend, by = c("market_desc", "submkt_desc"))
+  HFSS_2linkage <- HFSS_2linkage[, -which(names(HFSS_2linkage) == "extended_desc.x")]
+  colnames(HFSS_2linkage) [colnames(HFSS_2linkage) %in% c("extended_desc.y")] <- c("extended_desc")
+  
+  
+  #Append HFSS2linkage and HFSS3linkage
+  HFSS_COMPLETE = rbind(HFSS_2linkage, HFSS_3linkage)
+  
+  #LINK revised Kantar regs file to HFSS data file
+  HFSSFINAL22_23 <- HFSSFINAL22_23 %>%
+    left_join(HFSS_COMPLETE, by=c("market_desc", "submkt_desc", "extended_desc"))
+  
+  
+  
+  
+  
