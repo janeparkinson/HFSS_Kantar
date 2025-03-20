@@ -17,7 +17,8 @@ library(powerjoin)
 library(data.table) # For 'fread' function to read in CSVs efficiently
 setwd("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/")
 
-
+#Open HFSS master file
+HFSSFINAL22_23 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/HFSSFINAL22_23.parquet")
 
 #STAGE 1: clean and combine rf files for linkage to master file later on
 #Pivot rf title to a new column so that every rows has an indicator of which rf category it belongs to
@@ -355,14 +356,14 @@ HFSSFINAL22_23 = rbind(HFSSFINAL22, HFSSFINAL23)
   
   HFSSFINAL22_23 <- HFSSFINAL22_23 %>%
     mutate(HFSS_STATUS = case_when(
-      NPM >= 1 & `RST 4 Trading Area` == 'Take Home Soft Drinks' & !is.na(`HFSS_reg_cat`) ~ 'HFSS_INREGCATS',# cat 1 soft drinks with added sugar in reg category
-      NPM >= 4 & `RST 4 Trading Area` != 'Take Home Soft Drinks' & !is.na(`HFSS_reg_cat`) ~ "HFSS_INREGCATS",# cat 1 foods in reg cats
-      NPM >= 1 & `RST 4 Trading Area` == 'Take Home Soft Drinks' & is.na(`HFSS_reg_cat`)  ~ "HFSS_EXEMPT", # cat 2 HFSS soft drinks with high NPM score but exempt under the regs e.g. fruit juice without added sugar
-      NPM >= 4 & `RST 4 Trading Area` != 'Take Home Soft Drinks' & is.na(`HFSS_reg_cat`)  ~ "HFSS_EXEMPT", # cat 2 HFSS food but exempt under the regs e.g. pies and pastries
-      NPM   <1 & `RST 4 Trading Area` == 'Take Home Soft Drinks' & !is.na(`HFSS_reg_cat`) ~ "NOT_HFSS_INREGCATS", # cat 3 NON HFSS soft drinks with low NPM score and exempt under the regs
-      NPM   <4 & `RST 4 Trading Area` != 'Take Home Soft Drinks' & !is.na(`HFSS_reg_cat`) ~ "NOT_HFSS_INREGCATS", # cat 3 non HFSS foods exempt from regs
-      NPM   <1 & `RST 4 Trading Area` == 'Take Home Soft Drinks' & is.na(`HFSS_reg_cat`)  ~ "NOT_HFSS_NOREGS", # cat 4 non HFSS drinks not in a reg category
-      NPM   <4 & `RST 4 Trading Area` != 'Take Home Soft Drinks' & is.na(`HFSS_reg_cat`)  ~ "NOT_HFSS_NOREGS", #cat 4 non HFSS foods not in a reg cat
+      NPM >= 1 & `Sector` == 'Take Home Soft Drinks' & !is.na(`HFSS_reg_cat`) ~ 'HFSS_INREGCATS',# cat 1 soft drinks with added sugar in reg category
+      NPM >= 4 & `Sector` != 'Take Home Soft Drinks' & !is.na(`HFSS_reg_cat`) ~ "HFSS_INREGCATS",# cat 1 foods in reg cats
+      NPM >= 1 & `Sector` == 'Take Home Soft Drinks' & is.na(`HFSS_reg_cat`)  ~ "HFSS_EXEMPT", # cat 2 HFSS soft drinks with high NPM score but exempt under the regs e.g. fruit juice without added sugar
+      NPM >= 4 & `Sector` != 'Take Home Soft Drinks' & is.na(`HFSS_reg_cat`)  ~ "HFSS_EXEMPT", # cat 2 HFSS food but exempt under the regs e.g. pies and pastries
+      NPM   <1 & `Sector` == 'Take Home Soft Drinks' & !is.na(`HFSS_reg_cat`) ~ "NOT_HFSS_INREGCATS", # cat 3 NON HFSS soft drinks with low NPM score and exempt under the regs
+      NPM   <4 & `Sector` != 'Take Home Soft Drinks' & !is.na(`HFSS_reg_cat`) ~ "NOT_HFSS_INREGCATS", # cat 3 non HFSS foods exempt from regs
+      NPM   <1 & `Sector` == 'Take Home Soft Drinks' & is.na(`HFSS_reg_cat`)  ~ "NOT_HFSS_NOREGS", # cat 4 non HFSS drinks not in a reg category
+      NPM   <4 & `Sector` != 'Take Home Soft Drinks' & is.na(`HFSS_reg_cat`)  ~ "NOT_HFSS_NOREGS", #cat 4 non HFSS foods not in a reg cat
     ))
   
 
