@@ -97,6 +97,11 @@ promo_desc_range_final <- promo_desc_range %>%
     mutate(Promotion = ifelse(promcode== "aaaa", "TPR £10.00+", Promotion))
   
 
+      
+  
+  
+  
+
   write_parquet(HFSSFINAL22_23, "HFSSFINAL22_23.parquet")
   
   ####################################################
@@ -107,33 +112,30 @@ promo_desc_range_final <- promo_desc_range %>%
   
   #V1
   
-  HFSSFINAL_SIMD22_23 <- HFSSFINAL_SIMD22_23 %>%
-    mutate(
-      promgroup = case_when(
-        startsWith(Promotion, "TPR") ~ TPR" # assign TPR if Promotion starts with TPR
-        promcode >= b001 & promcode <= b037 OR promcode >= b040  & promcode <= b182 ~ "Multibuy",  #assign "multibuy" for this range
-      )
-    )
-
-    mutate(category = case_when(
-    value >= 0 & value < 10 ~ "Low",
-    value >= 10 & value < 30 ~ "Medium",
-    value >= 30 ~ "High"
-  ))
   
-###############################################  
-#DO NOT USE - OLD CODE NO LONGER NEEDED
-  #How many codes does each promotion description have?
-  promo_desc_count <- promo_desc_separated %>%
-    count(Promotion)
+  #Create promotion regulation category variable    
+  HFSSFINAL22_23 <- HFSSFINAL_22_23 %>%
+    mutate(promocode_regs = case_when(
+      str_detect(promcode, "^b\\d{2}$") & as.numeric(str_extract(promcode, "\\d+")) >= 1 & as.numeric(str_extract(promcode, "\\d+")) <= 37 ~ "Multi-buy",
+      str_detect(promcode, "^b\\d{3}$") & as.numeric(str_extract(promcode, "\\d+")) >= 40 & as.numeric(str_extract(promcode, "\\d+")) <= 182 ~ "Multi-buy",
+      str_detect(promcode, "^c\\d{3}$") & as.numeric(str_extract(promcode, "\\d+")) >= 1 & as.numeric(str_extract(promcode, "\\d+")) <= 170 ~ "Multi-buy",
+      promcode %in% c("c300", "c999") ~ "Multi-buy",
+      
+      str_detect(Promotion, "^TPR") ~ "TPR",
+      
+      promcode %in% c("b038", "b188", "b190", "b185") ~ "Mealdeal-dinein",
+      
+      str_detect(promcode, "^a\\d{3}$") & as.numeric(str_extract(promcode, "\\d+")) >= 1 & as.numeric(str_extract(promcode, "\\d+")) <= 999 ~ "Other promotions",
+      str_detect(promcode, "^d\\d{3}$") & as.numeric(str_extract(promcode, "\\d+")) >= 1 & as.numeric(str_extract(promcode, "\\d+")) <= 999 ~ "Other promotions",
+      
+      promcode %in% c("a000", "d000", "0000") | is.na(promcode) ~ "No promotion",
+      
+      TRUE ~ "Other"
+    ))
   
-  #join the single subset file to promo_desc_separated
-  promo_desc_singlewithNA <- full_join(promo_desc_single, promo_desc_separated, by = "Promotion")
   
-  #subset so that only promotion descriptors with one code remain
-  promo_desc_single_final <- subset.data.frame(promo_desc_singlewithNA, n ==1, select=c('Promotion', 'codes')) 
   
-  #subset so that only promotion descriptors with multiple codes remain
-  promo_desc_multiple_final <- promo_desc_singlewithNA[is.na(promo_desc_singlewithNA$"n"),]
+  
+  
   
   
