@@ -96,14 +96,6 @@ promo_desc_range_final <- promo_desc_range %>%
   HFSSFINAL_22_23 <- HFSSFINAL_22_23%>%
     mutate(Promotion = ifelse(promcode== "aaaa", "TPR £10.00+", Promotion))
   
-
-      
-  
-  
-  
-
-  write_parquet(HFSSFINAL22_23, "HFSSFINAL22_23.parquet")
-  
   ####################################################
   #Code two promotion category variables for analysis
   
@@ -114,7 +106,7 @@ promo_desc_range_final <- promo_desc_range %>%
   
   
   #Create promotion regulation category variable    
-  HFSSFINAL22_23 <- HFSSFINAL_22_23 %>%
+  HFSSFINAL_22_23 <- HFSSFINAL_22_23 %>%
     mutate(promocode_regs = case_when(
       str_detect(promcode, "^b\\d{2}$") & as.numeric(str_extract(promcode, "\\d+")) >= 1 & as.numeric(str_extract(promcode, "\\d+")) <= 37 ~ "Multi-buy",
       str_detect(promcode, "^b\\d{3}$") & as.numeric(str_extract(promcode, "\\d+")) >= 40 & as.numeric(str_extract(promcode, "\\d+")) <= 182 ~ "Multi-buy",
@@ -134,6 +126,9 @@ promo_desc_range_final <- promo_desc_range %>%
     ))
   
   
+  write_parquet(HFSSFINAL22_23, "HFSSFINAL22_23.parquet")
+  
+ 
   
   
   
