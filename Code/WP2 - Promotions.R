@@ -30,6 +30,7 @@ library(arrow) # for efficient file saving and reading
 library(dplyr)
 library(readr)
 library(readxl)
+library(openxlsx)
 library(data.table) # For 'fread' function to read in CSVs efficiently
 library(writexl)
 setwd("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/")
@@ -66,14 +67,45 @@ HFSS_purchases_by_promotion <- HFSSFINAL_SIMD22_23 %>%
                      group_by(promocode_regs, HFSS_STATUS) %>%
                      summarise(total_value = sum(adjusted_value_pcksbought, na.rm = TRUE))
 
+# Category 1: Prepared soft drinks
+HFSS_cat1_by_promotion <- HFSSFINAL_SIMD22_23 %>%
+  mutate(pcksbought = 
+           as.numeric(pcksbought),
+         grossupfact =
+           as.numeric(grossupfact),
+         adjusted_value_pcksbought = pcksbought * grossupfact) %>%
+filter(HFSS_reg_cat == "Prepared Soft Drinks") %>%
+  group_by(promocode_regs, HFSS_STATUS, HFSS_reg_cat) %>%
+  summarise(total_value = sum(adjusted_value_pcksbought, na.rm = TRUE))
+
+
+# Save the dataframe
+write.xlsx(HFSS_cat1_by_promotion, file = "HFSS_cat1_by_promotion.xlsx")
+
+
+
+# Category 2: Savoury snacks
+HFSS_cat2_by_promotion <- HFSSFINAL_SIMD22_23 %>%
+  mutate(pcksbought = 
+           as.numeric(pcksbought),
+         grossupfact =
+           as.numeric(grossupfact),
+         adjusted_value_pcksbought = pcksbought * grossupfact) %>%
+  filter(HFSS_reg_cat == "Crisps & Savoury Snacks") %>%
+  group_by(promocode_regs, HFSS_STATUS, HFSS_reg_cat) %>%
+  summarise(total_value = sum(adjusted_value_pcksbought, na.rm = TRUE))
+
+
+# Save the dataframe
+write.xlsx(HFSS_cat2_by_promotion, file = "HFSS_cat2_by_promotion.xlsx")
 
 
 
 
-#Convert grossupfactor to a numeric variable from a character variable
-HFSSFINAL_SIMD22_23 <- HFSSFINAL_SIMD22_23 %>%
-  mutate(grossupfact_num = as.numeric(grossupfact))
 
+
+######################
+#Permitted promotions
 
 Permprom_purchases <- HFSSFINAL_SIMD22_23 %>%
   mutate(grossupfact_num = as.numeric(grossupfact)) %>%
