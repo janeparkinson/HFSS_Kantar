@@ -1,4 +1,7 @@
-# Kantar analysis - Elaine - 15/05/202
+
+# LINKAGE 1 - PANEL + PURCHASE DATA
+# Kantar analysis - Elaine - 15/05/2024
+
 
 # JOIN PANEL AND PURCHASE DATA FOR 2022
 library(tidyverse) #lots of functions
@@ -26,7 +29,7 @@ panel_202301 <- read_csv("Panel data/panel_household_master_202301_v2.csv")
 joined_data22 <- panel_202301 %>%
   merge(y=purchase2022_cleaned, by.y="hhdnum", by.x="panel_id" )
 
-write_parquet(joined_data, "joined_data2022.parquet")
+write_parquet(joined_data22, "joined_data2022.parquet")
 joined_data_2022 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/joined_data2022.parquet")
 
 
@@ -50,7 +53,7 @@ panel_202401 <- read_csv("Panel data/panel_household_master_202401_v2.csv")
 joined_data23 <- panel_202401 %>%
   merge(y=purchase2023_cleaned, by.y="hhdnum", by.x="panel_id" )
 
-write_parquet(joined_data, "joined_data2023.parquet")
+write_parquet(joined_data23, "joined_data2023.parquet")
 joined_data_2023 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/joined_data2023.parquet")
 
 
