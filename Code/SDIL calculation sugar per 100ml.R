@@ -26,7 +26,7 @@
 #######################################################################################################################################
 #The aim of this code is to calculate the sugar content per 100ml of a drinks products i.e. whether it is covered by the SDIL
 #Drinks covered by the SDIL (5+g of sugar per 100mL AND pre-packaged - THIS WILL LOWER TO 4.5G FROM 1ST JANUARY 2028) AND have an NPM score of 1+ are in scope for the HFSS price promotion restrictions
-#Includes flavoured milk products as these are due to fall under the SDILFROM 1ST JNAUARY 2028
+#Includes flavoured milk products as these are due to fall under the SDIL FROM 1ST JNAUARY 2028
 #Includes powders, syrups, pods, cordials and ready to drink products
 #######################################################################################################################################
 
@@ -44,17 +44,40 @@ library(writexl)
 setwd("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/")
 #####################################################################
 
-
 #Inferential analysis - exploration
 #open datasets
-HFSSFINAL_SIMD22_23 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/HFSSFINAL_SIMD22_23.parquet")
+HFSSFINAL_SIMD22_23_new <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/HFSSFINAL_SIMD22_23_new.parquet")
 
 #######################################################
 #IDENTIFYING SDIL ELIGIBLE DRINKS
 
+#Summary of stages below:
+#1. Create dataframe with minimum and maximum sugar content of HFSS in scope purvhases (sugar measured in kg per purchase)
+#2. Create dataframe which only includes regulation category "prepared soft drinks"
+  #2a. "Prepared Soft Drinks" regulation category includes 14 categories of drinks from the validation field variable. These are listed below:
+  #2a.   1 COFFEE-INSTANT                
+        #2 DRINKING CHOC+COCOA           
+        #3 FRUIT JUICE & FRUIT DRINKS    
+        #4 FRUIT SQUASHES                
+        #5 MILKSHAKE MIXES  **EXEMPT**             
+        #6 SLIM AIDS+OPTIMAL HEALTH      
+        #7 SOFT DRINKS-COLA BOTTLES      
+        #8 SOFT DRINKS-COLA CANNED       
+        #9 SOFT DRINKS-CRBNTD FLVRS BTTLS
+        #10 SOFT DRINKS-CRBNTD FLVRS CNND 
+        #11 SOFT DRINKS-FRT JCE/DRNKS     
+        #12 SOFT DRINKS-MIXERS            
+        #13 SOFT DRINKS-MLKSHKS (RDY MADE) **EXEMPT**
+        #14 SOFT DRINKS-SHANDIES  
+#We need to be able to isolate drinks with 5g+ of sugar per 100ml under the current definition of the SDIL
+#We need to remnove Bottled milkshakes, Flavoured milks, Sweetened yoghurt drinks, Ready-to-drink coffee drinks which are exempt under the current definition of the SDIL (this will chaneg in October 2028)
+#
+
 # Create dataframe with minimum and maximum sugar content in HFSS 'in scope' products
-#SDIL liable drinks have 5+g sugar per 100ml 
-sugar_range <- HFSSFINAL_SIMD22_23 %>%
+# sugar (measured in kg) per purchase (may be one or more of the same item in a single purchase)
+#SDIL liable drinks have 5+g sugar per 100ml (to change to 4.5g from 1st Jan 2028)
+#range 0-5.22kg per purchase (5.22g relates to a purchase of 15 x 600g tubs of Quality Street)
+sugar_range <- HFSSFINAL_SIMD22_23_new %>%
   filter(HFSS_STATUS == "HFSS_INREGCATS") %>%
   summarise(min_sugar = min(`Sugar KG`, na.rm = TRUE),
             max_sugar = max(`Sugar KG`, na.rm = TRUE),
@@ -62,10 +85,10 @@ sugar_range <- HFSSFINAL_SIMD22_23 %>%
 
 print(sugar_range)
 
-#Subset dataframe to look at drinks included in Kantar's HFSS category
-subset_KWP <- HFSSFINAL_SIMD22_23 %>%
-  filter(HFSS_reg_cat == "Prepared Soft Drinks") %>%
-  select(panel_id, purchnum, pcksbought,`Pack Type`, NPM, HFSS, HFSS_reg_cat, HFSS_STATUS, `Energy KJ`, `Sugar KG`, `Sodium KG`, `Fat KG`, `Saturates KG`, `Fibre KG`, `Protein KG`, PRODUCT_DESC, `Prod desc drinks`, `227 - Low Sugar/Calorie/Fat.x`)
+#Subset master dataframe to look at drinks included in Kantar's HFSS category
+subset_KWP <- HFSSFINAL_SIMD22_23_new %>%
+  filter(REG_CAT13 == "Prepared Soft Drinks") %>%
+  select(panel_id, purchnum, period, pcksbought,barcode, `Pack Type`, VF_TITLE.x, NPM, HFSS, REG_CAT13, HFSS_STATUS, `Energy KJ`, `Sugar KG`, `Sodium KG`, `Fat KG`, `Saturates KG`, `Fibre KG`, `Protein KG`, PRODUCT_DESC, `Prod desc drinks`, Area, Market, Sector, Submarket, Extended, `227 - Low Sugar/Calorie/Fat.x`)
 
 #Extract single pack size from product description
 #PRODUCT_DESC is complete but product_desc_drinks is not
@@ -131,16 +154,15 @@ subset_KWP <- subset_KWP %>%
 subset_KWP <- subset_KWP %>%
   mutate(
     SugarGM_per100ml = SugarGM_per1ml * 100
-  )
-
-
+  ) 
 #IDENTIFYING DRINKS WITH ADDED SUGAR (THROUGH PROCESS OF ELIMINATION)
 #Derive variable for drinks with added sugar i.e. remove drinks which are marked NAS, SF or S/F For option 2 from study protocol i.e. exclude drinks likely to be natural sugar ONLY marked as no added sugar
-  mutate(
+ subset_KWP <- subset_KWP %>%
+   mutate(
     drinks_added_sugar = case_when(
       !str_detect(
         PRODUCT_DESC,
-        regex("\\b(?:NAS|SF|S/Fm|red.sgr)\\b", ignore_case = TRUE)
+        regex("\\b(?:NAS|SF|S/Fm|red\\.sgr)\\b", ignore_case = TRUE)
       ) ~ "added_sugar",
       TRUE ~ "NAS"
     )
@@ -151,24 +173,43 @@ subset_KWP <- subset_KWP %>%
 #Part one  
 #Derive a variable for drinks which are SDIL (have added sugar AND 5+g OF TOTAL SUGAR) + NPM >=1
 #This code selects products with added sugar, and with more than 5mg per 100ml TOTAL SUGAR and an NPM of 1+
+#MAKE MILKSHAKES 'EXEMPT' IN HFSS_drinks variable
+
 subset_KWP <- subset_KWP %>%
   mutate(
     HFSS_drinks = case_when(
-      drinks_added_sugar == "added_sugar" & SugarGM_per100ml >=5 & NPM >= 1 ~ "HFSS_drinks",
+      drinks_added_sugar == "added_sugar" &
+        SugarGM_per100ml >= 5 &
+        NPM >= 1 &
+        !VF_TITLE.x %in% c("MILKSHAKE MIXES",
+                           "SOFT DRINKS-MLKSHKS (RDY MADE)") ~ "HFSS_drinks",
       TRUE ~ NA_character_
     )
   )
 
-#Reorder variables
-subset_KWP <- subset_KWPmorethan5gsugar[, c(1,2,6,7,15,16,3:5,8:14,17:29)]  # Reorders columns by position
+
+#Left-join SDIL drinks variable to master dataframe.
+#This allows drinks subject to the current SDIL to be identified
+HFSSFINAL_SIMD22_23_new <- HFSSFINAL_SIMD22_23_new %>%
+  left_join(
+    subset_KWP %>%
+      select(panel_id, purchnum, period, HFSS_drinks),
+    by = c("panel_id", "purchnum", "period")
+  )
+
+
+
+
+
 
 ###########################
-#SG energy drinks analysis#
+#SG energy drinks analysis# - IGNORE FOR NOW
 ###########################
-
-#QUESTION 1: What proportion of sweetened beverage (SSB) purchases are energy drinks?
 
 #Derive energy drink variable
+
+
+#VERSION 1 - BASED ON ENERGY BEING ON THE PRODUCYT DESCRIPTION
 subset_KWP <- subset_KWP %>%
   mutate(
     # Match ENERGY / ENRGY / ENRG as complete tokens (case-insensitive)
@@ -178,7 +219,23 @@ subset_KWP <- subset_KWP %>%
     )
   ) 
 
+#OR VERSION 2 - BASED ON ENERGY OR SPORTS BEING IN THE EXTENDED DESCRIPTOR COLUMN (MORE EXTENSIVE)
+
+#Derive variable that identifies drinks that are listed as sport or energy drinks in the Extended column
+#"Canned Oth Regular Sport+Energ" "Ambient One Sho Sports Drinks"  "Bottled Ot Regular Sport+Energ" "Ambnt Fru Ambient J Sports Dri"
+subset_KWP <- subset_KWP %>%
+  mutate(
+    sport_energydrink = case_when(
+      str_detect(Extended, regex("\\b(Sport|Energ)\\w*", ignore_case = TRUE)) ~ "sport_energydrink",
+      TRUE ~ "std_drink"
+      )
+  )
+
+
+#QUESTION 1: What proportion of sweetened beverage (SSB) purchases are energy drinks?
+
 #TOTAL SALES VOLUME(L) ENERGY DRINKS AS A PROPORTION OF ALL SSB DRINKS IN 2022 and 2023
+
 #Denominator - total volume of ssb sold in 2022 and 2023
 total_SSB_salesvol_litres <- subset_KWP %>%
   filter(drinks_added_sugar == "added_sugar") %>%
@@ -186,15 +243,33 @@ total_SSB_salesvol_litres <- subset_KWP %>%
   pull(total_SSB_litres)
 
 #Numerator - total volume of energy drinks sold in 2022 and 2023
-#Total sales volume(L) of energy drinks purchased in 2022 and 2023 (raw panel)?
-energy_SSB_salesvol_litres <- subset_KWP %>%
+
+#VERSION 1
+total_energyvol_litres <- subset_KWP %>%
   filter(energy_drink == "energy_drink") %>%
-  summarise(energy_SSB_litres = sum(totalpurchaseML, na.rm = TRUE) /1000) %>%
-  pull(energy_SSB_litres)
+  summarise(total_energy_litres = sum(totalpurchaseML, na.rm = TRUE) /1000) %>%
+  pull(total_energy_litres)
+
+
+#VERSION 2
+#Total sales volume(L) of energy drinks purchased in 2022 and 2023 (raw panel)?
+total_sports_energyvol_litres <- subset_KWP %>%
+  filter(sport_energydrink == "sport_energydrink") %>%
+  summarise(total_energysports_litres = sum(totalpurchaseML, na.rm = TRUE) /1000) %>%
+  pull(total_energysports_litres)
+
 
 #energy drinks as a percentage of total SSB drinks sales volume (L)
+
+
+#VERSION 1
 #6.8% of SSB volume sales were classified as energy drinks in 2022 and 2023
-percentage_energySSB <- (energy_SSB_salesvol_litres/total_SSB_salesvol_litres) *100
+percentage_energySSBv1 <- (total_energyvol_litres/total_SSB_salesvol_litres) *100
+
+
+#VERSION 2
+#11.5% of SSB volume sales were classified as energy or sports drinks in 2022 and 2023
+percentage_energySSBV2 <- (total_sports_energyvol_litres/total_SSB_salesvol_litres) *100
 
 
 #Q2
@@ -209,8 +284,16 @@ total_volsoftdrinks_litres <- subset_KWP %>%
   pull(total_volsoftdrinks)
 
 #energy drinks as a proportion of ALL soft drinks sales (sales volume L)
+
+
+#VERSION 1
 #5.2% of TOTAL soft drinks sales were energy drinks in 2022 and 2023
-percentage_totalsoftdrinks_energy <- (energy_SSB_salesvol_litres/total_volsoftdrinks_litres) *100
+percentage_totalsoftdrinks_energyV1 <- (total_energyvol_litres/total_volsoftdrinks_litres) *100
+
+
+#VERSION 2
+#8.7% of TOTAL soft drinks sales were energy drinks in 2022 and 2023
+percentage_totalsoftdrinks_energyV2 <- (total_sports_energyvol_litres/total_volsoftdrinks_litres) *100
 
 
 
@@ -218,18 +301,4 @@ percentage_totalsoftdrinks_energy <- (energy_SSB_salesvol_litres/total_volsoftdr
 
 
 
-
-
-  
-
-#IGNORE FOR NOW
-#THE FOLLOWING USES PURCHASES AS THE METRIC NOT NUMBER OF ITEMS PURCHASED - NEED TO USE PCKS_BOUGHT
-
-#What proportion of ALL SSB drinks are energy drinks (with added sugar)?
-#SSB purchases in 2022 and 2023 = 103,102
-#energy drinks with added sugar purchased in 2022 and 2023 = 7,492
-#5.4% of all SSB drinks purchases in 2022 and 2023 were energy drinks
-percentage_energy <- mean(subset_KWP$energy_drink == "energy_drink", na.rm = TRUE) * 100
-percentage_energy
-sprintf("Energy drinks: %.1f%%", percentage_energy)
 
