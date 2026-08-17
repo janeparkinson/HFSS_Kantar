@@ -1,4 +1,7 @@
-# Kantar analysis - Elaine - 15/05/202
+
+# LINKAGE 1 - PANEL + PURCHASE DATA
+# Kantar analysis - Elaine - 15/05/2024
+
 
 # JOIN PANEL AND PURCHASE DATA FOR 2022
 library(tidyverse) #lots of functions
@@ -14,26 +17,20 @@ purchase2022 <- read_fwf("2022 Purchase Data/purchase record files/RT42D056_2023
                                 "null6", "promcode", "purchnum", "null7", "validfield", "null8", "area", "market", 
                                 "mktsector", "submkt", "extended", "null9", "purchdate" )))
 
+#Remove unnamed variables
+purchase2022_cleaned <- subset(purchase2022, select = -c(null1, null2, null3, null4, null5, null6, null7, null8, null9))
+
 # read in a csv (2022 panel data)
-panel_202301 <- read_csv("Panel data/panel_household_master_202301.csv")
+panel_202301 <- read_csv("Panel data/panel_household_master_202301_v2.csv")
 
 
 # joining the 2022 panel data and the 2022 purchase data
-joined_data <- panel_202301 %>%
-  merge(y=purchase2022, by.y="hhdnum", by.x="panel_id" )
+#the panel data files are 2023 (2022) and 2024 (2023)
+joined_data22 <- panel_202301 %>%
+  merge(y=purchase2022_cleaned, by.y="hhdnum", by.x="panel_id" )
 
-write_parquet(joined_data, "joined_data2022.parquet")
+write_parquet(joined_data22, "joined_data2022.parquet")
 joined_data_2022 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/joined_data2022.parquet")
-
-#INVESTIGATE DIFFERENCE IN THE NUMBER OF OBSERVATIONS IN THE PURCHASE DATA FILE AND THE JOINED DATA FILE
-#compare household ID variables in 2022 purchase data and joined_data_2022 to identify observations missing from the linked dataset after merge
-n_distinct(purchase2022 $hhdnum)
-n_distinct(panel_202301 $panel_id)
-
-#Which IDs are not in the panel_ID dataset
-library(dplyr)
-setdiff(purchase2022 $hhdnum, panel_202301 $panel_id)
-
 
 
 # JOIN PANEL AND PURCHASE DATA FOR 2023
@@ -45,16 +42,36 @@ purchase2023 <- read_fwf("2023 Purchase Data/purchase record files/RT42D056_2024
                                       "null6", "promcode", "purchnum", "null7", "validfield", "null8", "area", "market", 
                                       "mktsector", "submkt", "extended", "null9", "purchdate" )))
 
+#Remove unnamed variables 
+purchase2023_cleaned <- subset(purchase2023, select = -c(null1, null2, null3, null4, null5, null6, null7, null8, null9))
+
 # read in a csv (2023 panel data)
-panel_202401 <- read_csv("Panel data/panel_household_master_202401.csv")
+panel_202401 <- read_csv("Panel data/panel_household_master_202401_v2.csv")
 
 
 # joining the 2023 panel data and the 2023 purchase data
-joined_data <- panel_202401 %>%
-  merge(y=purchase2023, by.y="hhdnum", by.x="panel_id" )
+joined_data23 <- panel_202401 %>%
+  merge(y=purchase2023_cleaned, by.y="hhdnum", by.x="panel_id" )
 
-write_parquet(joined_data, "joined_data2023.parquet")
+write_parquet(joined_data23, "joined_data2023.parquet")
 joined_data_2023 <- read_parquet("/PHI_conf/PHSci-HFSS/Kantar analysis/Working Data/joined_data2023.parquet")
+
+
+
+
+
+##########################################
+#DO NOT USE THIS CODE - KEPT FOR REFERENCE
+###########################################
+
+#INVESTIGATE DIFFERENCE IN THE NUMBER OF OBSERVATIONS IN THE PURCHASE DATA FILE AND THE JOINED DATA FILE
+#compare household ID variables in 2022 purchase data and joined_data_2022 to identify observations missing from the linked dataset after merge
+#n_distinct(purchase2022 $hhdnum)
+#n_distinct(panel_202301 $panel_id)
+
+#Which IDs are not in the panel_ID dataset
+library(dplyr)
+setdiff(purchase2022_cleaned $hhdnum, panel_202301 $panel_id)
 
 #INVESTIGATE DIFFERENCE IN THE NUMBER OF OBSERVATIONS IN THE PURCHASE DATA FILE AND THE JOINED DATA FILE
 #compare household ID variables in 2023 purchase data and panel datasets to identify the IDs missing from the panel dataset 
